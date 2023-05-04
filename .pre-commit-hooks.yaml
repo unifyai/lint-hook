@@ -1,0 +1,6 @@
+- id: ivy-lint
+  name: ivy-lint
+  entry: ivy-lint
+  description: 'Linting checker and formatter for ivy coding and docstring styles.'
+  language: python
+  types: [python]
