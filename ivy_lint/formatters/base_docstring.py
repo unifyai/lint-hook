@@ -111,10 +111,11 @@ class BaseDocstringFormatter(ABC):
 
             file.close()
 
-            formatted_code = untokenize.untokenize(modified_tokens)
+            if changed:
+                formatted_code = untokenize.untokenize(modified_tokens)
 
-            with open(filename, "w", encoding="utf-8") as file:
-                file.write(formatted_code)
+                with open(filename, "w", encoding="utf-8") as file:
+                    file.write(formatted_code)
 
         except tokenize.TokenError:
             file.close()
