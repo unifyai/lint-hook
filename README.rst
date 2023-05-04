@@ -28,9 +28,9 @@ To install the pre-commit hooks, add this to your `.pre-commit-config.yaml`:
 
     - repos:
         - repo: https://github.com/unifyai/lint-hook
-            rev: <commit-hash>
+            rev: master
             hooks:
-            - id: lint-hook
+            - id: ivy-lint
 
 Citation
 --------
