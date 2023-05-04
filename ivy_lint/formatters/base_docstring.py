@@ -145,11 +145,6 @@ class BaseDocstringFormatter(ABC):
             return token_string
 
         contents = self._do_format_docstring(contents)
-
-        # If the docstring is only one line, return it as a single line
-        if len(contents.split("\n")) == 1:
-            return f"{open_quote}{contents.strip()}{open_quote}"
-
         contents = indentation + contents.replace("\n", f"\n{indentation}")
 
         # Strip trailing whitespace for every line
