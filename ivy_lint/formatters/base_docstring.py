@@ -147,7 +147,10 @@ class BaseDocstringFormatter(ABC):
         contents = self._do_format_docstring(contents)
 
         # If the docstring is only contains summary format it as a single line
-        if len(contents.split("\n\n")) == 1:
+        if (
+            len(contents.split("\n\n")) == 1
+            and len(self._do_split_sections(contents)) == 1
+        ):
             contents = contents.replace("\n", f"\n{indentation}").strip()
             return f"{open_quote}{contents}{open_quote}"
 
