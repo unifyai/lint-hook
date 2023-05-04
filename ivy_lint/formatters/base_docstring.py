@@ -1,8 +1,9 @@
 """Base Ivy docstring formatter."""
 
-from abc import ABC, abstractmethod
+from abc import ABC
 import tokenize
 from typing import List, Tuple
+import re
 
 import untokenize
 
@@ -191,7 +192,48 @@ class BaseDocstringFormatter(ABC):
             "docformatter only handles triple-quoted (single or double) " "strings"
         )
 
-    @abstractmethod
+    def _do_split_sections(self, docstring: str) -> List[Tuple[str, str]]:
+        """
+        Return the docstring split into sections.
+
+        Parameters
+        ----------
+        docstring: str
+            The cleaned docstring.
+
+        Returns
+        -------
+        docstring_sections: List[Tuple[str, str]]
+            The docstring split into sections.
+
+            Each section is a tuple of the form (title, contents).
+        """
+        # Find section titles and split the docstring into sections
+        # Section titles are lines followed by a line of dashes
+        sections = re.split(r"(^.+\n-+\n)", docstring, flags=re.MULTILINE)
+
+        # Because of how re.split works, there will be an empty string after every
+        # section title if the section is actually empty (i.e. no special cases)
+        sections = [""] + sections  # Empty title for first section
+
+        return [(sections[i], sections[i + 1]) for i in range(0, len(sections), 2)]
+
+    def _get_section_title(self, section: str) -> str:
+        """
+        Return the title of the section.
+
+        Parameters
+        ----------
+        section: str
+            The section.
+
+        Returns
+        -------
+        title: str
+            The title of the section.
+        """
+        return section.split("\n", 1)[0].strip()
+
     def _do_format_docstring(self, docstring: str) -> str:
         """
         Return formatted version of docstring.
@@ -199,11 +241,55 @@ class BaseDocstringFormatter(ABC):
         Parameters
         ----------
         docstring: str
-            The cleaned docstring itself.
+            The cleaned docstring.
 
         Returns
         -------
         docstring_formatted: str
             The docstring formatted.
         """
-        # If it's needed, we can implement a method for each section separately
+        # If it's needed, we can implement a method for splitting summary and
+        # description
+        sections = self._do_split_sections(docstring)
+
+        formatted_sections = [self._do_format_summary_and_description(sections[0][1])]
+        formatted_sections.extend(
+            [
+                self._do_format_section(title + section)
+                for title, section in sections[1:]
+            ]
+        )
+
+        return "".join(formatted_sections)
+
+    def _do_format_section(self, section: str) -> str:
+        """
+        Return formatted version of section.
+
+        Parameters
+        ----------
+        section: str
+            The section.
+
+        Returns
+        -------
+        section_formatted: str
+            The section formatted.
+        """
+        return section
+
+    def _do_format_summary_and_description(self, summary_description: str) -> str:
+        """
+        Return formatted version of summary and description.
+
+        Parameters
+        ----------
+        summary_description: str
+            The summary and description.
+
+        Returns
+        -------
+        summary_description_formatted: str
+            The summary and description formatted.
+        """
+        return summary_description
