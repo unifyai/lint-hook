@@ -74,22 +74,30 @@ class BaseDocstringFormatter(ABC):
                 line,
             ) in tokenize.generate_tokens(file.readline):
                 new_token_string = token_string
-                if (
-                    token_type == tokenize.STRING
-                    and token_string.startswith(self.QUOTE_TYPES)
-                    and (
-                        previous_token_type == tokenize.INDENT
-                        or previous_token_type == tokenize.NEWLINE
-                        or only_comments_so_far
+                try:
+                    if (
+                        token_type == tokenize.STRING
+                        and token_string.startswith(self.QUOTE_TYPES)
+                        and (
+                            previous_token_type == tokenize.INDENT
+                            or previous_token_type == tokenize.NEWLINE
+                            or only_comments_so_far
+                        )
+                    ):
+                        indentation = " " * (len(line) - len(line.lstrip()))
+                        new_token_string = self._do_format_docstring_node(
+                            indentation,
+                            token_string,
+                        )
+                        if not changed and new_token_string != token_string:
+                            changed = True
+                except Exception as e:
+                    print(
+                        "Error formatting docstring in"
+                        f" {filename}:{start[0]}:{start[1]}: {e}"
                     )
-                ):
-                    indentation = " " * (len(line) - len(line.lstrip()))
-                    new_token_string = self._do_format_docstring_node(
-                        indentation,
-                        token_string,
-                    )
-                    if not changed and new_token_string != token_string:
-                        changed = True
+                    new_token_string = token_string
+                    changed = True
 
                 if token_type not in [
                     tokenize.COMMENT,
@@ -146,7 +154,7 @@ class BaseDocstringFormatter(ABC):
         # Strip trailing whitespace for every line
         contents = "\n".join([line.rstrip() for line in contents.split("\n")])
 
-        return f"{open_quote}\n" f"{contents}\n" f'{indentation}"""'
+        return f'{open_quote}\n{contents}\n{indentation}"""'
 
     def _do_strip_docstring(self, indentation: int, docstring: str) -> Tuple[str, str]:
         """
@@ -189,7 +197,7 @@ class BaseDocstringFormatter(ABC):
                 ), quote.replace("'", '"')
 
         raise ValueError(
-            "docformatter only handles triple-quoted (single or double) " "strings"
+            "docformatter only handles triple-quoted (single or double) strings"
         )
 
     def _do_split_sections(self, docstring: str) -> List[Tuple[str, str]]:

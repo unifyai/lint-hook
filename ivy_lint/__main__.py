@@ -16,14 +16,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "-j",
-        "--jobs",
-        type=int,
-        metavar="n",
-        default=0,
-        help="number of parallel jobs; " "match CPU count if value is 0 (default: 0)",
-    )
-    parser.add_argument(
         "filenames",
         nargs="+",
         help="filenames to check",
@@ -37,10 +29,12 @@ def main():
     args = parse_args()
 
     filenames = list(set(args.filenames))
+    error = False
 
-    # TODO divide filenames into chunks and run in parallel
     for formatter in FORMATTERS:
-        formatter(filenames).format()
+        error = formatter(filenames).format() or error
+
+    return 1 if error else 0
 
 
 if __name__ == "__main__":
