@@ -62,6 +62,11 @@ class FunctionOrderingFormatter(BaseFormatter):
         """
         tree = ast.parse(source_code)
 
+        # Rearrange methods inside each class in ascending order
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                node.body.sort(key=lambda n: n.name if isinstance(n, ast.FunctionDef) else "")
+
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
 
         # Define a helper function to determine sorting precedence
@@ -70,7 +75,8 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 return (0, 0, getattr(node, "name", ""))
             if isinstance(node, ast.Assign):
-                return (1, 0, getattr(node.targets[0], "id", ""))
+                targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+                return (1, 0, ",".join(targets))
             if isinstance(node, ast.ClassDef):
                 return (2, 0, node.name)
             if isinstance(node, ast.FunctionDef):
