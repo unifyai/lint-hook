@@ -70,10 +70,10 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 return (0, 0, getattr(node, "name", ""))
             if isinstance(node, ast.ClassDef):
-                return (2, 0, node.name)
+                return (1, 0, node.name)
             if isinstance(node, ast.FunctionDef):
-                return (3, 0, node.name)
-            return (1, 0, getattr(node, "name", ""))
+                return (2, 0, node.name)
+            return (3, 0, getattr(node, "name", ""))
 
         # Sort nodes
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
@@ -88,7 +88,7 @@ class FunctionOrderingFormatter(BaseFormatter):
 
 
     def _format_file(self, filename: str) -> bool:
-    # Only include ivy frontend files
+        # Only include ivy frontend files
         if (
             re.match(
                 r"ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*", 
