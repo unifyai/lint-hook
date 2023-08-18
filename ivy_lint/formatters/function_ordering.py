@@ -77,17 +77,29 @@ class FunctionOrderingFormatter(BaseFormatter):
                 return (3, 0, node.name)
             return (4, 0, getattr(node, "name", ""))
 
+    nodes_sorted = sorted(nodes_with_comments, key=sort_key)
 
-        # Sort nodes
-        nodes_sorted = sorted(nodes_with_comments, key=sort_key)
+    reordered_code_list = []
+    prev_was_assignment = False
+    for code, node in nodes_sorted:
+        if isinstance(node, ast.Assign):
+            if prev_was_assignment:
+                # If the previous node was also an assignment, skip one newline
+                reordered_code_list.append(code.strip())
+            else:
+                reordered_code_list.append(code)
+            prev_was_assignment = True
+        else:
+            reordered_code_list.append(code)
+            prev_was_assignment = False
 
-        reordered_code = "\n".join([code for code, _ in nodes_sorted]).strip()
+    reordered_code = "\n".join(reordered_code_list).strip()
 
-        # Ensure there's a newline at the end of the file
-        if not reordered_code.endswith("\n"):
-            reordered_code += "\n"
+    # Ensure there's a newline at the end of the file
+    if not reordered_code.endswith("\n"):
+        reordered_code += "\n"
 
-        return reordered_code
+    return reordered_code
 
 
     def _format_file(self, filename: str) -> bool:
