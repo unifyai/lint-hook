@@ -78,7 +78,14 @@ class FunctionOrderingFormatter(BaseFormatter):
         # Sort nodes
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
 
-        return "\n".join([code for code, _ in nodes_sorted]).strip()
+        reordered_code = "\n".join([code for code, _ in nodes_sorted]).strip()
+
+        # Ensure there's a newline at the end of the file
+        if not reordered_code.endswith("\n"):
+            reordered_code += "\n"
+
+        return reordered_code
+
 
     def _format_file(self, filename: str) -> bool:
         # Only include ivy frontend files
