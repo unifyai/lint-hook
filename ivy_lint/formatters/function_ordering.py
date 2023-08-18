@@ -70,10 +70,10 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 return (0, 0, getattr(node, "name", ""))
             if isinstance(node, ast.ClassDef):
-                return (1, 0, node.name)
-            if isinstance(node, ast.FunctionDef):
                 return (2, 0, node.name)
-            return (3, 0, getattr(node, "name", ""))
+            if isinstance(node, ast.FunctionDef):
+                return (3, 0, node.name)
+            return (1, 0, getattr(node, "name", ""))
 
         # Sort nodes
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
@@ -88,10 +88,10 @@ class FunctionOrderingFormatter(BaseFormatter):
 
 
     def _format_file(self, filename: str) -> bool:
-        # Only include ivy frontend files
+    # Only include ivy frontend files
         if (
             re.match(
-                r"ivy/functional/frontends/(?!.*(?:func_wrapper\.py|__init__\.py)$).*", # noqa
+                r"ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*", 
                 filename,
             )
             is None
@@ -101,6 +101,10 @@ class FunctionOrderingFormatter(BaseFormatter):
         try:
             with open(filename, "r", encoding="utf-8") as f:
                 original_code = f.read()
+
+            # Ignore the file if it's empty or contains only whitespace
+            if not original_code.strip():
+                return False
 
             reordered_code = self._rearrange_functions_and_classes(original_code)
 
@@ -112,5 +116,4 @@ class FunctionOrderingFormatter(BaseFormatter):
                 f"Error: The provided file '{filename}' does not contain valid Python "
                 "code."
             )
-
             return False
