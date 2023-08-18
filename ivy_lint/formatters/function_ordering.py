@@ -69,11 +69,14 @@ class FunctionOrderingFormatter(BaseFormatter):
             node = item[1]
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 return (0, 0, getattr(node, "name", ""))
+            if isinstance(node, ast.Assign):
+                return (1, 0, getattr(node.targets[0], "id", ""))
             if isinstance(node, ast.ClassDef):
-                return (1, 0, node.name)
-            if isinstance(node, ast.FunctionDef):
                 return (2, 0, node.name)
-            return (3, 0, getattr(node, "name", ""))
+            if isinstance(node, ast.FunctionDef):
+                return (3, 0, node.name)
+            return (4, 0, getattr(node, "name", ""))
+
 
         # Sort nodes
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
