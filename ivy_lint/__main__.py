@@ -3,9 +3,9 @@
 import sys
 import argparse
 
-from .formatters import IvyArrayDocstringFormatter
+from .formatters import FunctionOrderingFormatter
 
-FORMATTERS = (IvyArrayDocstringFormatter,)
+FORMATTERS = (FunctionOrderingFormatter,)
 
 
 def parse_args() -> argparse.Namespace:
