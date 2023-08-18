@@ -84,7 +84,7 @@ class FunctionOrderingFormatter(BaseFormatter):
         # Only include ivy frontend files
         if (
             re.match(
-                r"ivy/functional/frontends/(?!.*/func_wrapper\.py$).*(?!.*/?__init__\.py$)", # noqa
+                r"ivy/functional/frontends/(?!.*(?:func_wrapper\.py|__init__\.py)$).*", # noqa
                 filename,
             )
             is None
