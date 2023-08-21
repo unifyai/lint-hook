@@ -41,6 +41,9 @@ class FunctionOrderingFormatter(BaseFormatter):
             else:
                 break
 
+        # Remove duplicate headers
+        extracted_lines = [line for line in extracted_lines if line not in ["# Helpers #", "# ------- #", "# API Functions #", "# ------------- #"]]
+
         return "\n".join(extracted_lines), node
 
     def _extract_all_nodes_with_comments(
@@ -80,14 +83,28 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, ast.ClassDef):
                 return (2, 0, node.name)
             if isinstance(node, ast.FunctionDef):
-                return (3, 0, node.name)
-            return (4, 0, getattr(node, "name", ""))
+                if node.name.startswith("_"):
+                    return (3, 0, node.name)
+                return (4, 0, node.name)
+            return (5, 0, getattr(node, "name", ""))
 
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
 
         reordered_code_list = []
         prev_was_assignment = False
+        added_helpers_header = False
+        added_api_header = False
+
         for code, node in nodes_sorted:
+            if isinstance(node, ast.FunctionDef) and node.name.startswith("_") and not added_helpers_header:
+                reordered_code_list.append("# Helpers #")
+                reordered_code_list.append("# ------- #")
+                added_helpers_header = True
+            elif isinstance(node, ast.FunctionDef) and not node.name.startswith("_") and not added_api_header:
+                reordered_code_list.append("# API Functions #")
+                reordered_code_list.append("# ------------- #")
+                added_api_header = True
+
             if isinstance(node, ast.Assign):
                 if prev_was_assignment:
                     # If the previous node was also an assignment, skip one newline
@@ -106,7 +123,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             reordered_code += "\n"
 
         return reordered_code
-
 
     def _format_file(self, filename: str) -> bool:
         # Only include ivy frontend files
