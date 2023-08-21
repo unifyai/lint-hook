@@ -67,6 +67,12 @@ class FunctionOrderingFormatter(BaseFormatter):
             return (5, 0, getattr(node, "name", ""))
 
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
+
+        has_helper_functions = any(
+            isinstance(node, ast.FunctionDef) and node.name.startswith("_")
+            for _, node in nodes_sorted
+        )
+
         reordered_code_list = []
         prev_was_assignment = False
         last_function_type = None
@@ -77,12 +83,12 @@ class FunctionOrderingFormatter(BaseFormatter):
                 if node.name.startswith("_"):
                     current_function_type = "helper"
                     if last_function_type != "helper":
-                        reordered_code_list.append("\n\n# Helpers #")
+                        reordered_code_list.append("# Helpers #")
                         reordered_code_list.append("# ------- #")
                 else:
                     current_function_type = "api"
-                    if last_function_type != "api":
-                        reordered_code_list.append("\n\n# API Functions #")
+                    if last_function_type != "api" and has_helper_functions:
+                        reordered_code_list.append("# API Functions #")
                         reordered_code_list.append("# ------------- #")
 
             last_function_type = current_function_type or last_function_type
