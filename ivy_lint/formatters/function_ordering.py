@@ -88,8 +88,14 @@ class FunctionOrderingFormatter(BaseFormatter):
         last_function_type = None
 
         for code, node in nodes_sorted:
+            # If the docstring was added at the beginning, skip the node
             if docstring_added and isinstance(node, ast.Expr) and isinstance(node.value, ast.Str):
                 continue
+
+            # If the docstring was added at the beginning, strip the leading newlines of the next code snippet
+            if docstring_added:
+                code = code.lstrip()
+                docstring_added = False  # reset the flag
 
             current_function_type = None
             if isinstance(node, ast.FunctionDef):
