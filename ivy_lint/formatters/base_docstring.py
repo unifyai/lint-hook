@@ -1,14 +1,14 @@
 """Base Ivy docstring formatter."""
 
-from abc import ABC
 import tokenize
 from typing import List, Tuple
 import re
 
 import untokenize
+from ivy_lint.formatters import BaseFormatter
 
 
-class BaseDocstringFormatter(ABC):
+class BaseDocstringFormatter(BaseFormatter):
     """Docstring formatter for ivy docstring style."""
 
     STR_QUOTE_TYPES = (
@@ -28,25 +28,6 @@ class BaseDocstringFormatter(ABC):
         "U'''",
     )
     QUOTE_TYPES = STR_QUOTE_TYPES + RAW_QUOTE_TYPES + UCODE_QUOTE_TYPES
-
-    def __init__(self, filenames: List[str]):
-        self.filenames = filenames
-
-    def format(self) -> bool:
-        """
-        Format docstrings in files.
-
-        Returns
-        -------
-        changed
-            True if any file was changed, False otherwise.
-        """
-        changed = False
-
-        for filename in self.filenames:
-            changed = self._format_file(filename) or changed
-
-        return changed
 
     def _format_file(self, filename: str) -> bool:
         """
