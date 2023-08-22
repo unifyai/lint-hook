@@ -4,13 +4,42 @@ from typing import Tuple, List
 
 from ivy_lint.formatters import BaseFormatter
 
-HEADER_REGEX = r"#\s*[\w\s]+\s*#"
+HEADERS_TO_REMOVE = [
+    "# Helpers #",
+    "# Main #",
+    "# --- Helpers --- #",
+    "# --- Main --- #",
+    " API Functions ",
+    "# - #",
+    "# -- #"
+    "# --- #",
+    "# ---- #",
+    "# ----- #",
+    "# ------ #",
+    "# ------- #",
+    "# -------- #",
+    "# --------- #",
+    "# ---------- #",
+    "# ----------- #",
+    "# ------------ #",
+    "# ------------- #",
+    "# -------------- #",
+    "# --------------- #",
+    "# ---------------- #",
+    "# ----------------- #",
+    "# ------------------ #",
+    "# ------------------- #",
+    "# -------------------- #",
+    "# --------------------- #",
+]
 
 class FunctionOrderingFormatter(BaseFormatter):
     """Formatter for function ordering."""
 
     def _remove_existing_headers(self, source_code: str) -> str:
-        return re.sub(HEADER_REGEX, '', source_code).strip()
+        for header in HEADERS_TO_REMOVE:
+            source_code = source_code.replace(header, "")
+        return source_code
 
     def _extract_node_with_leading_comments(
         self, node: ast.AST, source_code: str
