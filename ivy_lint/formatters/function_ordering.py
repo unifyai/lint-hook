@@ -4,7 +4,7 @@ from typing import Tuple, List
 
 from ivy_lint.formatters import BaseFormatter
 
-HEADER_PATTERN = re.compile(r"#\s?(-{0,3})\s?(Helpers|Main|API Functions)\s?(-{0,3})\s?#\n#\s?(-{7,11})\s?#")
+HEADER_PATTERN = re.compile(r"#\s?(-{0,3})\s?(Helpers|Main|API Functions)\s?(-{0,3})\s?#\n#\s?(-{7,15})\s?#")
 
 class FunctionOrderingFormatter(BaseFormatter):
     """Formatter for function ordering."""
