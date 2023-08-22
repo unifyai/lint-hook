@@ -69,7 +69,7 @@ class FunctionOrderingFormatter(BaseFormatter):
             elif isinstance(node, ast.Assign):
                 segments["assignments"].append(code)
             elif isinstance(node, ast.FunctionDef):
-                if node.name.startswith("_"):
+                if node.names.startswith("_"):
                     segments["helpers"].append(code)
                 else:
                     segments["apis"].append(code)
