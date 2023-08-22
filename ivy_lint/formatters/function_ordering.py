@@ -52,7 +52,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                 node.body.sort(key=lambda n: n.name if isinstance(n, ast.FunctionDef) else "")
 
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
-
+        
         def sort_key(item):
             node = item[1]
             if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -70,12 +70,14 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
         reordered_code_list = []
-
+        
         # Check and add module-level docstring
+        docstring_added = False
         if isinstance(tree, ast.Module) and tree.body and isinstance(tree.body[0], ast.Expr) and isinstance(tree.body[0].value, ast.Str):
             docstring = ast.get_docstring(tree, clean=False)
             if docstring:
                 reordered_code_list.append(f'"""{docstring}"""\n')
+                docstring_added = True
 
         has_helper_functions = any(
             isinstance(node, ast.FunctionDef) and node.name.startswith("_")
@@ -86,6 +88,10 @@ class FunctionOrderingFormatter(BaseFormatter):
         last_function_type = None
 
         for code, node in nodes_sorted:
+            if docstring_added:
+                code = code.lstrip()  # remove leading newlines if docstring was added
+                docstring_added = False
+            
             current_function_type = None
             if isinstance(node, ast.FunctionDef):
                 if node.name.startswith("_"):
@@ -96,7 +102,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                     current_function_type = "api"
                     if last_function_type != "api" and has_helper_functions:
                         reordered_code_list.append("\n\n# --- Main --- #\n# ------------ #")
-
+            
             last_function_type = current_function_type or last_function_type
 
             if isinstance(node, ast.Assign):
