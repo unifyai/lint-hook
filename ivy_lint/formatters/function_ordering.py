@@ -88,13 +88,12 @@ class FunctionOrderingFormatter(BaseFormatter):
                 if node.name.startswith("_"):
                     current_function_type = "helper"
                     if last_function_type != "helper":
-                        reordered_code_list.append("\n\n# --- Helpers --- #")
-                        reordered_code_list.append("# --------------- #")
+                        reordered_code_list.append("\n\n# --- Helpers --- #\n# --------------- #")
                 else:
                     current_function_type = "api"
                     if last_function_type != "api" and has_helper_functions:
-                        reordered_code_list.append("\n\n# --- Main --- #")
-                        reordered_code_list.append("# ------------ #")
+                        reordered_code_list.append("\n\n# --- Main --- #\n# ------------ #")
+
 
             last_function_type = current_function_type or last_function_type
 
