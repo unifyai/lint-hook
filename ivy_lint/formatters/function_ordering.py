@@ -4,9 +4,13 @@ from typing import Tuple, List
 
 from ivy_lint.formatters import BaseFormatter
 
+HEADER_REGEX = r"#\s*[\w\s]+\s*#"
 
 class FunctionOrderingFormatter(BaseFormatter):
     """Formatter for function ordering."""
+
+    def _remove_existing_headers(self, source_code: str) -> str:
+        return re.sub(HEADER_REGEX, '', source_code).strip()
 
     def _extract_node_with_leading_comments(
         self, node: ast.AST, source_code: str
@@ -43,8 +47,9 @@ class FunctionOrderingFormatter(BaseFormatter):
         ]
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
+        source_code = self._remove_existing_headers(source_code)
+        
         tree = ast.parse(source_code)
-
         for node in tree.body:
             if isinstance(node, ast.ClassDef):
                 node.body.sort(key=lambda n: n.name if isinstance(n, ast.FunctionDef) else "")
@@ -83,13 +88,13 @@ class FunctionOrderingFormatter(BaseFormatter):
                 if node.name.startswith("_"):
                     current_function_type = "helper"
                     if last_function_type != "helper":
-                        reordered_code_list.append("\n\n# Helpers #")
-                        reordered_code_list.append("# ------- #")
+                        reordered_code_list.append("\n\n# --- Helpers --- #")
+                        reordered_code_list.append("# --------------- #")
                 else:
                     current_function_type = "api"
                     if last_function_type != "api" and has_helper_functions:
-                        reordered_code_list.append("\n\n# API Functions #")
-                        reordered_code_list.append("# ------------- #")
+                        reordered_code_list.append("\n\n# --- Main --- #")
+                        reordered_code_list.append("# ------------ #")
 
             last_function_type = current_function_type or last_function_type
 
