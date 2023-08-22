@@ -72,12 +72,12 @@ class FunctionOrderingFormatter(BaseFormatter):
         reordered_code_list = []
         
         # Check and add module-level docstring
-        docstring_node = None
+        docstring_added = False
         if isinstance(tree, ast.Module) and tree.body and isinstance(tree.body[0], ast.Expr) and isinstance(tree.body[0].value, ast.Str):
             docstring = ast.get_docstring(tree, clean=False)
             if docstring:
                 reordered_code_list.append(f'"""{docstring}"""\n')
-                docstring_node = tree.body[0]  # Save the node for comparison later
+                docstring_added = True
 
         has_helper_functions = any(
             isinstance(node, ast.FunctionDef) and node.name.startswith("_")
@@ -88,14 +88,9 @@ class FunctionOrderingFormatter(BaseFormatter):
         last_function_type = None
 
         for code, node in nodes_sorted:
-            # If the current node is the module-level docstring, skip it
-            if node is docstring_node:
+            # If the docstring was added at the beginning, skip the node
+            if docstring_added and isinstance(node, ast.Expr) and isinstance(node.value, ast.Str):
                 continue
-
-            # If the docstring was added at the beginning, strip the leading newlines of the next code snippet
-            if docstring_node:
-                code = code.lstrip()
-                docstring_node = None  # reset
 
             current_function_type = None
             if isinstance(node, ast.FunctionDef):
