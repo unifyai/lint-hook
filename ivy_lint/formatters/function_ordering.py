@@ -13,9 +13,7 @@ class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
-    def _extract_node_with_leading_comments(
-        self, node: ast.AST, source_code: str
-    ) -> Tuple[str, ast.AST]:
+    def _extract_node_with_leading_comments(self, node: ast.AST, source_code: str) -> Tuple[str, ast.AST]:
         if hasattr(node, "decorator_list"):
             start_line = (
                 node.decorator_list[0].lineno if node.decorator_list else node.lineno
@@ -39,9 +37,7 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         return "\n".join(extracted_lines), node
 
-    def _extract_all_nodes_with_comments(
-        self, tree: ast.AST, source_code: str
-    ) -> List[Tuple[str, ast.AST]]:
+    def _extract_all_nodes_with_comments(self, tree: ast.AST, source_code: str) -> List[Tuple[str, ast.AST]]:
         return [
             self._extract_node_with_leading_comments(node, source_code)
             for node in tree.body
@@ -73,13 +69,19 @@ class FunctionOrderingFormatter(BaseFormatter):
             return (5, 0, getattr(node, "name", ""))
 
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
+        reordered_code_list = []
+
+        # Check and add module-level docstring
+        if isinstance(tree, ast.Module) and tree.body and isinstance(tree.body[0], ast.Expr) and isinstance(tree.body[0].value, ast.Str):
+            docstring = ast.get_docstring(tree, clean=False)
+            if docstring:
+                reordered_code_list.append(f'"""{docstring}"""\n')
 
         has_helper_functions = any(
             isinstance(node, ast.FunctionDef) and node.name.startswith("_")
             for _, node in nodes_sorted
         )
 
-        reordered_code_list = []
         prev_was_assignment = False
         last_function_type = None
 
@@ -94,7 +96,6 @@ class FunctionOrderingFormatter(BaseFormatter):
                     current_function_type = "api"
                     if last_function_type != "api" and has_helper_functions:
                         reordered_code_list.append("\n\n# --- Main --- #\n# ------------ #")
-
 
             last_function_type = current_function_type or last_function_type
 
