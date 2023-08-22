@@ -88,12 +88,9 @@ class FunctionOrderingFormatter(BaseFormatter):
         last_function_type = None
 
         for code, node in nodes_sorted:
-            if docstring_added:
-                if docstring_added and isinstance(node, ast.Expr) and isinstance(node.value, ast.Str):
-                    continue
-                code = code.lstrip()  # remove leading newlines if docstring was added
-                docstring_added = False
-            
+            if docstring_added and isinstance(node, ast.Expr) and isinstance(node.value, ast.Str):
+                continue
+
             current_function_type = None
             if isinstance(node, ast.FunctionDef):
                 if node.name.startswith("_"):
