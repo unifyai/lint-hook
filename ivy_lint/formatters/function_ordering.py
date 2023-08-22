@@ -5,6 +5,7 @@ from typing import Tuple, List
 from ivy_lint.formatters import BaseFormatter
 
 HEADER_PATTERN = re.compile(r"#\s?(-{0,3})\s?(Helpers|Main|API Functions)\s?(-{0,3})\s?#\n#\s?(-{7,15})\s?#\n(?:\s*\n)*")
+FILE_PATTERN = re.compile(r"ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*")
 
 class FunctionOrderingFormatter(BaseFormatter):
     """Formatter for function ordering."""
@@ -114,7 +115,7 @@ class FunctionOrderingFormatter(BaseFormatter):
         return reordered_code
 
     def _format_file(self, filename: str) -> bool:
-        if re.match(r"ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*", filename) is None:
+        if FILE_PATTERN.match(filename) is None:
             return False
 
         try:
