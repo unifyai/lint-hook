@@ -1,11 +1,86 @@
 import re
 import ast
+import networkx as nx
 from typing import Tuple, List
+import sys
 
 from ivy_lint.formatters import BaseFormatter
 
-HEADER_PATTERN = re.compile(r"#\s?(-{0,3})\s?(Helpers|Main|API Functions)\s?(-{0,3})\s?#\n#\s?(-{7,15})\s?#\n(?:\s*\n)*")
-FILE_PATTERN = re.compile(r"ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*")
+HEADER_PATTERN = re.compile(
+    r"#\s?(-{0,3})\s?(Helpers|Main|API"
+    r" Functions)\s?(-{0,3})\s?#\n#\s?(-{7,15})\s?#\n(?:\s*\n)*"
+)
+FILE_PATTERN = re.compile(
+    r"(ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*"
+    # r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py)$).*)"
+)
+
+
+def class_build_dependency_graph(nodes_with_comments):
+    graph = nx.DiGraph()
+    for _, node in nodes_with_comments:
+        if isinstance(node, ast.ClassDef):
+            graph.add_node(node.name)
+            for base in node.bases:
+                if isinstance(base, ast.Name) and base.id not in graph:
+                    graph.add_node(base.id)
+                if isinstance(base, ast.Name):
+                    graph.add_edge(base.id, node.name)
+    return graph
+
+
+def contains_any_name(code: str, names: List[str]) -> bool:
+    return any(name in code for name in names)
+
+
+def extract_names_from_assignment(node: ast.Assign) -> List[str]:
+    """
+    Extract all names (variables) from the right-hand side of an assignment.
+    """
+    names = []
+
+    def extract_names(node):
+        if isinstance(node, ast.Name):
+            names.append(node.id)
+        for child in ast.iter_child_nodes(node):
+            extract_names(child)
+
+    # Handle Python version differences
+    if sys.version_info < (3, 8):
+        values = node.values
+    else:
+        values = [node.value]
+
+    for value in values:
+        extract_names(value)
+
+    return names
+
+
+def assignment_build_dependency_graph(nodes_with_comments):
+    graph = nx.DiGraph()
+
+    # First, we add all assignment nodes to our graph
+    for code, node in nodes_with_comments:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    graph.add_node(target.id)
+
+    # Now, let's check the dependencies
+    for code, node in nodes_with_comments:
+        if isinstance(node, ast.Assign):
+            right_side_names = extract_names_from_assignment(node)
+
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    for name in right_side_names:
+                        if graph.has_node(
+                            name
+                        ):  # This checks if a name is an assignment node
+                            graph.add_edge(name, target.id)
+    return graph
+
 
 class FunctionOrderingFormatter(BaseFormatter):
     """Formatter for function ordering."""
@@ -13,7 +88,9 @@ class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
-    def _extract_node_with_leading_comments(self, node: ast.AST, source_code: str) -> Tuple[str, ast.AST]:
+    def _extract_node_with_leading_comments(
+        self, node: ast.AST, source_code: str
+    ) -> Tuple[str, ast.AST]:
         if hasattr(node, "decorator_list"):
             start_line = (
                 node.decorator_list[0].lineno if node.decorator_list else node.lineno
@@ -37,7 +114,9 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         return "\n".join(extracted_lines), node
 
-    def _extract_all_nodes_with_comments(self, tree: ast.AST, source_code: str) -> List[Tuple[str, ast.AST]]:
+    def _extract_all_nodes_with_comments(
+        self, tree: ast.AST, source_code: str
+    ) -> List[Tuple[str, ast.AST]]:
         return [
             self._extract_node_with_leading_comments(node, source_code)
             for node in tree.body
@@ -45,38 +124,99 @@ class FunctionOrderingFormatter(BaseFormatter):
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
-        
-        tree = ast.parse(source_code)
-        for node in tree.body:
-            if isinstance(node, ast.ClassDef):
-                node.body.sort(key=lambda n: n.name if isinstance(n, ast.FunctionDef) else "")
 
+        tree = ast.parse(source_code)
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
-        
+
+        # Dependency graph for class inheritance
+        class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
+        sorted_classes = list(nx.topological_sort(class_dependency_graph))
+
+        # Dependency graph for assignments
+        assignment_dependency_graph = assignment_build_dependency_graph(
+            nodes_with_comments
+        )
+        dependent_assignments = set(assignment_dependency_graph.nodes()) - set(
+            assignment_dependency_graph.edges()
+        )
+        all_assignments = {
+            target.id
+            for code, node in nodes_with_comments
+            if isinstance(node, ast.Assign)
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
+        all_assignments - dependent_assignments
+
+        def _is_assignment_dependent_on_assignment(node):
+            if isinstance(node, ast.Assign):
+                right_side_names = extract_names_from_assignment(node)
+                return any(name in right_side_names for name in all_assignments)
+            return False
+
+        def _is_assignment_dependent_on_function_or_class(node):
+            if isinstance(node, ast.Assign):
+                right_side_names = extract_names_from_assignment(node)
+                function_and_class_names = [
+                    node.name
+                    for _, node in nodes_with_comments
+                    if isinstance(node, (ast.FunctionDef, ast.ClassDef))
+                ]
+                return any(
+                    name in right_side_names for name in function_and_class_names
+                )
+            return False
+
         def sort_key(item):
             node = item[1]
+
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 return (0, 0, getattr(node, "name", ""))
+            
+            # Handle the try-except blocks containing imports.
+            if isinstance(node, ast.Try):
+                for n in node.body:
+                    if isinstance(n, (ast.Import, ast.ImportFrom)):
+                        return (0, 1, getattr(n, "name", ""))
+
             if isinstance(node, ast.Assign):
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
-                return (1, 0, ",".join(targets))
+                target_str = ",".join(targets)
+                if _is_assignment_dependent_on_assignment(node):
+                    return (7, 0, target_str)
+                elif _is_assignment_dependent_on_function_or_class(node):
+                    return (6, 0, target_str)
+                else:
+                    return (1, 0, target_str)
+
             if isinstance(node, ast.ClassDef):
-                return (2, 0, node.name)
+                try:
+                    return (2, sorted_classes.index(node.name), node.name)
+                except ValueError:
+                    return (2, len(sorted_classes), node.name)
+
             if isinstance(node, ast.FunctionDef):
                 if node.name.startswith("_"):
-                    return (3, 0, node.name)
-                return (4, 0, node.name)
-            return (5, 0, getattr(node, "name", ""))
+                    return (4, 0, node.name)
+                else:
+                    return (5, 0, node.name)
+
+            return (8, 0, getattr(node, "name", ""))
 
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
         reordered_code_list = []
-        
+
         # Check and add module-level docstring
         docstring_added = False
-        if isinstance(tree, ast.Module) and tree.body and isinstance(tree.body[0], ast.Expr) and isinstance(tree.body[0].value, ast.Str):
+        if (
+            isinstance(tree, ast.Module)
+            and tree.body
+            and isinstance(tree.body[0], ast.Expr)
+            and isinstance(tree.body[0].value, ast.Str)
+        ):
             docstring = ast.get_docstring(tree, clean=False)
             if docstring:
-                reordered_code_list.append(f'"""{docstring}"""\n')
+                reordered_code_list.append(f'"""{docstring}"""')
                 docstring_added = True
 
         has_helper_functions = any(
@@ -89,7 +229,11 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         for code, node in nodes_sorted:
             # If the docstring was added at the beginning, skip the node
-            if docstring_added and isinstance(node, ast.Expr) and isinstance(node.value, ast.Str):
+            if (
+                docstring_added
+                and isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Str)
+            ):
                 continue
 
             current_function_type = None
@@ -97,12 +241,16 @@ class FunctionOrderingFormatter(BaseFormatter):
                 if node.name.startswith("_"):
                     current_function_type = "helper"
                     if last_function_type != "helper":
-                        reordered_code_list.append("\n\n# --- Helpers --- #\n# --------------- #")
+                        reordered_code_list.append(
+                            "\n\n# --- Helpers --- #\n# --------------- #"
+                        )
                 else:
                     current_function_type = "api"
                     if last_function_type != "api" and has_helper_functions:
-                        reordered_code_list.append("\n\n# --- Main --- #\n# ------------ #")
-            
+                        reordered_code_list.append(
+                            "\n\n# --- Main --- #\n# ------------ #"
+                        )
+
             last_function_type = current_function_type or last_function_type
 
             if isinstance(node, ast.Assign):
@@ -138,5 +286,8 @@ class FunctionOrderingFormatter(BaseFormatter):
                 f.write(reordered_code)
 
         except SyntaxError:
-            print(f"Error: The provided file '{filename}' does not contain valid Python code.")
+            print(
+                f"Error: The provided file '{filename}' does not contain valid Python"
+                " code."
+            )
             return False

@@ -13,6 +13,7 @@ packages = [{include = "ivy_lint"}]
 python = "^3.8"
 untokenize = "^0.1.1"
 black = "^23.3.0"
+networkx = "^3.0"
 
 [tool.poetry.scripts]
 ivy-lint = "ivy_lint.__main__:main"
