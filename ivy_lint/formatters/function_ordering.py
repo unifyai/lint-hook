@@ -77,6 +77,12 @@ def assignment_build_dependency_graph(nodes_with_comments):
                             graph.add_edge(name, target.id)
     return graph
 
+def has_st_composite_decorator(node: ast.FunctionDef) -> bool:
+    return any(
+        isinstance(decorator, ast.Attribute) and decorator.attr == "composite"
+        for decorator in node.decorator_list
+    )
+    
 
 class FunctionOrderingFormatter(BaseFormatter):
     """Formatter for function ordering."""
@@ -192,7 +198,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (2, len(sorted_classes), node.name)
 
             if isinstance(node, ast.FunctionDef):
-                if node.name.startswith("_"):
+                if node.name.startswith("_") or has_st_composite_decorator(node):
                     return (4, 0, node.name)
                 else:
                     return (5, 0, node.name)
@@ -234,7 +240,7 @@ class FunctionOrderingFormatter(BaseFormatter):
 
             current_function_type = None
             if isinstance(node, ast.FunctionDef):
-                if node.name.startswith("_"):
+                if node.name.startswith("_") or has_st_composite_decorator(node):
                     current_function_type = "helper"
                     if last_function_type != "helper":
                         reordered_code_list.append(
