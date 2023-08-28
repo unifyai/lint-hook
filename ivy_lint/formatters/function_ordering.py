@@ -59,14 +59,12 @@ def extract_names_from_assignment(node: ast.Assign) -> List[str]:
 def assignment_build_dependency_graph(nodes_with_comments):
     graph = nx.DiGraph()
 
-    # First, we add all assignment nodes to our graph
     for code, node in nodes_with_comments:
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     graph.add_node(target.id)
 
-    # Now, let's check the dependencies
     for code, node in nodes_with_comments:
         if isinstance(node, ast.Assign):
             right_side_names = extract_names_from_assignment(node)
@@ -76,7 +74,7 @@ def assignment_build_dependency_graph(nodes_with_comments):
                     for name in right_side_names:
                         if graph.has_node(
                             name
-                        ):  # This checks if a name is an assignment node
+                        ):
                             graph.add_edge(name, target.id)
     return graph
 
