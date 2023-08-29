@@ -12,7 +12,7 @@ HEADER_PATTERN = re.compile(
 )
 FILE_PATTERN = re.compile(
     r"(ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*"
-    r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*$)).*)"
+    r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
 
@@ -34,9 +34,6 @@ def contains_any_name(code: str, names: List[str]) -> bool:
 
 
 def extract_names_from_assignment(node: ast.Assign) -> List[str]:
-    """
-    Extract all names (variables) from the right-hand side of an assignment.
-    """
     names = []
 
     def extract_names(node):
@@ -92,8 +89,6 @@ def related_helper_function(assignment_name, nodes_with_comments):
 
 
 class FunctionOrderingFormatter(BaseFormatter):
-    """Formatter for function ordering."""
-
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
