@@ -127,6 +127,27 @@ class FunctionOrderingFormatter(BaseFormatter):
             for node in tree.body
         ]
 
+    def _sort_class_methods(self, class_node, source_code):
+        properties = []
+        instance_methods = []
+        for item in class_node.body:
+            if isinstance(item, ast.FunctionDef):
+                has_property_decorator = any(
+                    isinstance(decorator, (ast.Attribute, ast.Name)) 
+                    and (decorator.attr if isinstance(decorator, ast.Attribute) else decorator.id) in ["setter", "getter", "property"]
+                    for decorator in item.decorator_list
+                )
+                if has_property_decorator:
+                    properties.append(self._extract_node_with_leading_comments(item, source_code))
+                else:
+                    instance_methods.append(self._extract_node_with_leading_comments(item, source_code))
+    
+        # Sort methods alphabetically based on their names
+        properties = sorted(properties, key=lambda x: x[1].name)
+        instance_methods = sorted(instance_methods, key=lambda x: x[1].name)
+
+        return properties, instance_methods
+    
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
 
@@ -252,32 +273,38 @@ class FunctionOrderingFormatter(BaseFormatter):
             ):
                 continue
 
-            current_function_type = None
-            if isinstance(node, ast.FunctionDef):
-                if node.name.startswith("_") or has_st_composite_decorator(node):
-                    current_function_type = "helper"
-                    if last_function_type != "helper":
-                        reordered_code_list.append(
-                            "\n\n# --- Helpers --- #\n# --------------- #"
-                        )
-                else:
-                    current_function_type = "api"
-                    if last_function_type != "api" and has_helper_functions:
-                        reordered_code_list.append(
-                            "\n\n# --- Main --- #\n# ------------ #"
-                        )
+            if isinstance(node, ast.ClassDef):
+                properties, methods = self._sort_class_methods(node, source_code)
+                
+                reordered_code_list.append(code.split('\n', 1)[0])  # Add the class definition line
+                reordered_code_list.append(f"\n\n# Properties #\n# ---------- #")
+                reordered_code_list.extend([prop_code for prop_code, _ in properties])
+                reordered_code_list.append(f"\n\n# Instance Methods #\n# ---------------- #")
+                reordered_code_list.extend([method_code for method_code, _ in methods])
+                reordered_code_list.append("\n\n")  # A separator after a class
+            else:
+                current_function_type = None
+                if isinstance(node, ast.FunctionDef):
+                    if node.name.startswith("_") or has_st_composite_decorator(node):
+                        current_function_type = "helper"
+                        if last_function_type != "helper":
+                            reordered_code_list.append("\n\n# --- Helpers --- #\n# --------------- #")
+                    else:
+                        current_function_type = "api"
+                        if last_function_type != "api":
+                            reordered_code_list.append("\n\n# --- Main --- #\n# ------------ #")
 
-            last_function_type = current_function_type or last_function_type
+                last_function_type = current_function_type or last_function_type
 
-            if isinstance(node, ast.Assign):
-                if prev_was_assignment:
-                    reordered_code_list.append(code.strip())
+                if isinstance(node, ast.Assign):
+                    if prev_was_assignment:
+                        reordered_code_list.append(code.strip())
+                    else:
+                        reordered_code_list.append(code)
+                    prev_was_assignment = True
                 else:
                     reordered_code_list.append(code)
-                prev_was_assignment = True
-            else:
-                reordered_code_list.append(code)
-                prev_was_assignment = False
+                    prev_was_assignment = False
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
