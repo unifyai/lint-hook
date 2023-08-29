@@ -189,11 +189,13 @@ class FunctionOrderingFormatter(BaseFormatter):
                         return (0, 1, getattr(n, "name", ""))
 
             if isinstance(node, ast.Assign):
+                # Check if the assignment is to an attribute of a function.
+                if '.' in ''.join(target.id for target in node.targets if isinstance(target, ast.Name)):
+                    return (9, 0, ''.join(target.id for target in node.targets if isinstance(target, ast.Name)))
+
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
                 target_str = ",".join(targets)
-                if is_assignment_of_function_attribute(node):
-                    return (9, 0, target_str)
-                elif _is_assignment_dependent_on_assignment(node):
+                if _is_assignment_dependent_on_assignment(node):
                     return (7, 0, target_str)
                 elif _is_assignment_dependent_on_function_or_class(node):
                     return (6, 0, target_str)
