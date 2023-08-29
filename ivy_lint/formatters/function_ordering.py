@@ -11,7 +11,8 @@ HEADER_PATTERN = re.compile(
     r" Functions)\s?(-{0,3})\s?#\n#\s?(-{7,15})\s?#\n(?:\s*\n)*"
 )
 FILE_PATTERN = re.compile(
-    r"ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*"
+    r"(ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*"
+    r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
 
@@ -33,9 +34,6 @@ def contains_any_name(code: str, names: List[str]) -> bool:
 
 
 def extract_names_from_assignment(node: ast.Assign) -> List[str]:
-    """
-    Extract all names (variables) from the right-hand side of an assignment.
-    """
     names = []
 
     def extract_names(node):
@@ -72,16 +70,26 @@ def assignment_build_dependency_graph(nodes_with_comments):
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     for name in right_side_names:
-                        if graph.has_node(
-                            name
-                        ):
+                        if graph.has_node(name):
+
                             graph.add_edge(name, target.id)
     return graph
 
+def has_st_composite_decorator(node: ast.FunctionDef) -> bool:
+    return any(
+        isinstance(decorator, ast.Attribute) and decorator.attr == "composite"
+        for decorator in node.decorator_list
+    )
+    
+def related_helper_function(assignment_name, nodes_with_comments):
+    for _, node in nodes_with_comments:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and hasattr(node, "name"):
+            if node.name.startswith("_") and contains_any_name(ast.dump(node), [assignment_name]):
+                return node.name
+    return None
+
 
 class FunctionOrderingFormatter(BaseFormatter):
-    """Formatter for function ordering."""
-
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
@@ -169,7 +177,7 @@ class FunctionOrderingFormatter(BaseFormatter):
 
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 return (0, 0, getattr(node, "name", ""))
-            
+
             # Handle the try-except blocks containing imports.
             if isinstance(node, ast.Try):
                 for n in node.body:
@@ -179,12 +187,23 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, ast.Assign):
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
                 target_str = ",".join(targets)
+                
+                related_function = related_helper_function(target_str, nodes_with_comments)
+                if related_function:
+                    function_position = [
+                        i for i, (_, n) in enumerate(nodes_with_comments) 
+                        if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and hasattr(n, "name") and n.name == related_function
+                    ][0]
+                    return (6, function_position, target_str)
+                
                 if _is_assignment_dependent_on_assignment(node):
                     return (7, 0, target_str)
                 elif _is_assignment_dependent_on_function_or_class(node):
                     return (6, 0, target_str)
                 else:
                     return (1, 0, target_str)
+
+
 
             if isinstance(node, ast.ClassDef):
                 try:
@@ -193,7 +212,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (2, len(sorted_classes), node.name)
 
             if isinstance(node, ast.FunctionDef):
-                if node.name.startswith("_"):
+                if node.name.startswith("_") or has_st_composite_decorator(node):
                     return (4, 0, node.name)
                 else:
                     return (5, 0, node.name)
@@ -235,7 +254,7 @@ class FunctionOrderingFormatter(BaseFormatter):
 
             current_function_type = None
             if isinstance(node, ast.FunctionDef):
-                if node.name.startswith("_"):
+                if node.name.startswith("_") or has_st_composite_decorator(node):
                     current_function_type = "helper"
                     if last_function_type != "helper":
                         reordered_code_list.append(
