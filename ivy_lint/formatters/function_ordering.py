@@ -85,8 +85,8 @@ def has_st_composite_decorator(node: ast.FunctionDef) -> bool:
     
 def related_helper_function(assignment_name, nodes_with_comments):
     for _, node in nodes_with_comments:
-        if isinstance(node, ast.FunctionDef) and node.name.startswith("_"):
-            if contains_any_name(ast.dump(node), [assignment_name]):
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and hasattr(node, "name"):
+            if node.name.startswith("_") and contains_any_name(ast.dump(node), [assignment_name]):
                 return node.name
     return None
 
@@ -195,7 +195,8 @@ class FunctionOrderingFormatter(BaseFormatter):
                 related_function = related_helper_function(target_str, nodes_with_comments)
                 if related_function:
                     function_position = [
-                        i for i, (_, n) in enumerate(nodes_with_comments) if n.name == related_function
+                        i for i, (_, n) in enumerate(nodes_with_comments) 
+                        if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and hasattr(n, "name") and n.name == related_function
                     ][0]
                     return (6, function_position, target_str)
                 
@@ -205,6 +206,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (6, 0, target_str)
                 else:
                     return (1, 0, target_str)
+
 
 
             if isinstance(node, ast.ClassDef):
