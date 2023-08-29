@@ -83,6 +83,13 @@ def has_st_composite_decorator(node: ast.FunctionDef) -> bool:
         for decorator in node.decorator_list
     )
     
+def is_assignment_of_function_attribute(node: ast.Assign) -> bool:
+    if isinstance(node.targets[0], ast.Attribute):
+        target_name = node.targets[0].value.id
+        return target_name in {
+            _node.name for _node in ast.walk(node) if isinstance(_node, ast.FunctionDef)
+        }
+    return False
 
 class FunctionOrderingFormatter(BaseFormatter):
     """Formatter for function ordering."""
@@ -184,7 +191,9 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, ast.Assign):
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
                 target_str = ",".join(targets)
-                if _is_assignment_dependent_on_assignment(node):
+                if is_assignment_of_function_attribute(node):
+                    return (9, 0, target_str)
+                elif _is_assignment_dependent_on_assignment(node):
                     return (7, 0, target_str)
                 elif _is_assignment_dependent_on_function_or_class(node):
                     return (6, 0, target_str)
