@@ -88,6 +88,17 @@ def related_helper_function(assignment_name, nodes_with_comments):
                 return node.name
     return None
 
+def _is_property_method(node):
+    return isinstance(node, ast.FunctionDef) and any(
+        isinstance(decorator, ast.Name) and decorator.id == "property"
+        for decorator in node.decorator_list
+    )
+
+def _is_property_setter_or_getter(node):
+    return isinstance(node, ast.FunctionDef) and any(
+        isinstance(decorator, ast.Attribute) and (decorator.attr == "setter" or decorator.attr == "getter")
+        for decorator in node.decorator_list
+    )
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -187,15 +198,15 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, ast.Assign):
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
                 target_str = ",".join(targets)
-                
+
                 related_function = related_helper_function(target_str, nodes_with_comments)
                 if related_function:
                     function_position = [
-                        i for i, (_, n) in enumerate(nodes_with_comments) 
+                        i for i, (_, n) in enumerate(nodes_with_comments)
                         if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and hasattr(n, "name") and n.name == related_function
                     ][0]
                     return (6, function_position, target_str)
-                
+
                 if _is_assignment_dependent_on_assignment(node):
                     return (7, 0, target_str)
                 elif _is_assignment_dependent_on_function_or_class(node):
@@ -203,13 +214,22 @@ class FunctionOrderingFormatter(BaseFormatter):
                 else:
                     return (1, 0, target_str)
 
-
-
             if isinstance(node, ast.ClassDef):
-                try:
-                    return (2, sorted_classes.index(node.name), node.name)
-                except ValueError:
-                    return (2, len(sorted_classes), node.name)
+                # Sort the functions inside the class
+                class_funcs = [n for n in node.body if isinstance(n, ast.FunctionDef)]
+                properties = sorted([n for n in class_funcs if _is_property_method(n)], key=lambda x: x.name)
+                setters_getters = sorted([n for n in class_funcs if _is_property_setter_or_getter(n)], key=lambda x: x.name)
+                other_funcs = sorted([n for n in class_funcs if n not in properties and n not in setters_getters], key=lambda x: x.name)
+
+                node.body = properties + setters_getters + other_funcs
+                
+                # For the class sort order:
+                if properties:
+                    return (2, 0, node.name)
+                elif setters_getters:
+                    return (2, 1, node.name)
+                else:
+                    return (2, 2, node.name)
 
             if isinstance(node, ast.FunctionDef):
                 if node.name.startswith("_") or has_st_composite_decorator(node):
@@ -218,6 +238,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (5, 0, node.name)
 
             return (8, 0, getattr(node, "name", ""))
+
 
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
         reordered_code_list = []
