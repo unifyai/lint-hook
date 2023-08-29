@@ -83,6 +83,13 @@ def has_st_composite_decorator(node: ast.FunctionDef) -> bool:
         for decorator in node.decorator_list
     )
     
+def related_helper_function(assignment_name, nodes_with_comments):
+    for _, node in nodes_with_comments:
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("_"):
+            if contains_any_name(ast.dump(node), [assignment_name]):
+                return node.name
+    return None
+
 
 class FunctionOrderingFormatter(BaseFormatter):
     """Formatter for function ordering."""
@@ -184,12 +191,21 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, ast.Assign):
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
                 target_str = ",".join(targets)
+                
+                related_function = related_helper_function(target_str, nodes_with_comments)
+                if related_function:
+                    function_position = [
+                        i for i, (_, n) in enumerate(nodes_with_comments) if n.name == related_function
+                    ][0]
+                    return (6, function_position, target_str)
+                
                 if _is_assignment_dependent_on_assignment(node):
                     return (7, 0, target_str)
                 elif _is_assignment_dependent_on_function_or_class(node):
                     return (6, 0, target_str)
                 else:
                     return (1, 0, target_str)
+
 
             if isinstance(node, ast.ClassDef):
                 try:
