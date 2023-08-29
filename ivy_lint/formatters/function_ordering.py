@@ -71,6 +71,7 @@ def assignment_build_dependency_graph(nodes_with_comments):
                 if isinstance(target, ast.Name):
                     for name in right_side_names:
                         if graph.has_node(name):
+
                             graph.add_edge(name, target.id)
     return graph
 
