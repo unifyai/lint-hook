@@ -88,6 +88,15 @@ def related_helper_function(assignment_name, nodes_with_comments):
                 return node.name
     return None
 
+def method_type(node: ast.FunctionDef) -> str:
+    if any(
+        isinstance(decorator, ast.Attribute) and 
+        (decorator.attr.endswith("setter") or decorator.attr.endswith("getter") or isinstance(decorator.value, ast.Name) and decorator.value.id == "property")
+        for decorator in node.decorator_list
+    ):
+        return "property"
+    else:
+        return "function"
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -171,6 +180,33 @@ class FunctionOrderingFormatter(BaseFormatter):
                     name in right_side_names for name in function_and_class_names
                 )
             return False
+        
+        def class_member_sort_key(item):
+            _, node = item
+
+            # Assignments
+            if isinstance(node, ast.Assign):
+                right_side_names = extract_names_from_assignment(node)
+                function_and_class_names = [
+                    n.name
+                    for _, n in nodes_with_comments
+                    if isinstance(n, (ast.FunctionDef, ast.ClassDef))
+                ]
+                if any(name in right_side_names for name in function_and_class_names):
+                    return (4, 0, getattr(node, "name", ""))
+                else:
+                    return (1, 0, getattr(node, "name", ""))
+            
+            # Properties
+            if isinstance(node, ast.FunctionDef) and method_type(node) == "property":
+                return (2, node.name)
+
+            # Functions
+            if isinstance(node, ast.FunctionDef):
+                return (3, node.name)
+
+            return (5, 0, getattr(node, "name", ""))
+
 
         def sort_key(item):
             node = item[1]
@@ -242,6 +278,34 @@ class FunctionOrderingFormatter(BaseFormatter):
         last_function_type = None
 
         for code, node in nodes_sorted:
+            # Handle the class members
+            if isinstance(node, ast.ClassDef):
+                class_members = [
+                    self._extract_node_with_leading_comments(class_member, source_code)
+                    for class_member in node.body
+                ]
+                
+                sorted_class_members = sorted(class_members, key=class_member_sort_key)
+                class_code = "\n".join([code for code, _ in sorted_class_members])
+
+                header = f"class {node.name}("
+                if node.bases:
+                    base_names = ", ".join([base.id for base in node.bases if isinstance(base, ast.Name)])
+                    header += base_names
+                header += "):\n"
+                
+                # Add headers for properties and functions
+                if any(method_type(n) == "property" for _, n in sorted_class_members):
+                    class_code = class_code.replace(
+                        "# Properties #", "# Properties #\n# ---------- #", 1
+                    )
+                if any(method_type(n) == "function" for _, n in sorted_class_members):
+                    class_code = class_code.replace(
+                        "# Instance Methods #", "# Instance Methods #\n# ---------------- #", 1
+                    )
+
+                reordered_code_list.append(header + indent(class_code, "    "))
+                continue
             # If the docstring was added at the beginning, skip the node
             if (
                 docstring_added
