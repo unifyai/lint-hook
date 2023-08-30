@@ -257,7 +257,7 @@ class FunctionOrderingFormatter(BaseFormatter):
 
             return (8, 0, getattr(node, "name", ""))
 
-        nodes_sorted = sorted(nodes_with_comments, key=sort_key)
+        nodes_sorted = sorted(nodes_with_comments, key=lambda x: sort_key(x)[0])
         reordered_code_list = []
 
         # Check and add module-level docstring
