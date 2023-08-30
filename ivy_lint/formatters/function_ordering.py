@@ -126,6 +126,52 @@ class FunctionOrderingFormatter(BaseFormatter):
             self._extract_node_with_leading_comments(node, source_code)
             for node in tree.body
         ]
+        
+    def _rearrange_class_content(self, class_content: List[ast.AST]) -> List[str]:
+        assignments = []
+        properties = []
+        methods = []
+        dependent_assignments = []
+
+        # Separate out assignments, properties, and methods
+        for node in class_content:
+            if isinstance(node, ast.Assign):
+                assignments.append(node)
+            elif isinstance(node, ast.FunctionDef):
+                if any(
+                    d.id in {'setter', 'getter', 'property'}
+                    for d in node.decorator_list if isinstance(d, ast.Attribute)
+                ):
+                    properties.append(node)
+                else:
+                    methods.append(node)
+
+        # Identify dependent assignments
+        for assign in assignments:
+            right_side_names = extract_names_from_assignment(assign)
+            if any(name in right_side_names for name in methods):
+                dependent_assignments.append(assign)
+        for assign in dependent_assignments:
+            assignments.remove(assign)
+
+        # Sort functions alphabetically
+        properties = sorted(properties, key=lambda node: node.name)
+        methods = sorted(methods, key=lambda node: node.name)
+
+        # Assemble class content
+        reordered_content = []
+        reordered_content.extend(assignments)
+        if properties:
+            reordered_content.append("# Properties #")
+            reordered_content.append("# ---------- #")
+            reordered_content.extend(properties)
+        if methods:
+            reordered_content.append("# Instance Methods #")
+            reordered_content.append("# ---------------- #")
+            reordered_content.extend(methods)
+        reordered_content.extend(dependent_assignments)
+
+        return reordered_content
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
@@ -152,6 +198,11 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(target, ast.Name)
         }
         all_assignments - dependent_assignments
+        
+        for _, node in nodes_with_comments:
+            if isinstance(node, ast.ClassDef):
+                reordered_class_content = self._rearrange_class_content(node.body)
+                node.body = reordered_class_content
 
         def _is_assignment_dependent_on_assignment(node):
             if isinstance(node, ast.Assign):
