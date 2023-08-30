@@ -126,34 +126,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             self._extract_node_with_leading_comments(node, source_code)
             for node in tree.body
         ]
-        
-    def _rearrange_class_content(self, class_content):
-        assignments = []
-        properties = []
-        methods = []
-        dependent_assignments = []
-
-        for node in class_content:
-            if isinstance(node, ast.FunctionDef):
-                if any(
-                    (isinstance(d, ast.Name) and d.id in {'setter', 'getter', 'property'}) or
-                    (isinstance(d, ast.Attribute) and d.attr in {'setter', 'getter', 'property'})
-                    for d in node.decorator_list
-                ):
-                    properties.append(node)
-                else:
-                    methods.append(node)
-            elif isinstance(node, ast.Assign):
-                if any(
-                    isinstance(target, ast.Attribute) and target.value.id == "self"
-                    for target in node.targets
-                ):
-                    dependent_assignments.append(node)
-                else:
-                    assignments.append(node)
-
-        return assignments + properties + methods + dependent_assignments
-
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
@@ -180,11 +152,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(target, ast.Name)
         }
         all_assignments - dependent_assignments
-        
-        for _, node in nodes_with_comments:
-            if isinstance(node, ast.ClassDef):
-                reordered_class_content = self._rearrange_class_content(node.body)
-                node.body = reordered_class_content
 
         def _is_assignment_dependent_on_assignment(node):
             if isinstance(node, ast.Assign):
