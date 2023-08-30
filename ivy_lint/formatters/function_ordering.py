@@ -88,7 +88,7 @@ def related_helper_function(assignment_name, nodes_with_comments):
                 return node.name
     return None
 
-def extract_property_name(decorator: ast.decorator) -> str:
+def extract_property_name(decorator: ast.expr) -> str:
     if isinstance(decorator, ast.Attribute):
         return decorator.value.id
     return None
