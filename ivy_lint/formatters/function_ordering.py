@@ -127,51 +127,33 @@ class FunctionOrderingFormatter(BaseFormatter):
             for node in tree.body
         ]
         
-    def _rearrange_class_content(self, class_content: List[ast.AST]) -> List[str]:
+    def _rearrange_class_content(self, class_content):
         assignments = []
         properties = []
         methods = []
         dependent_assignments = []
 
-        # Separate out assignments, properties, and methods
         for node in class_content:
-            if isinstance(node, ast.Assign):
-                assignments.append(node)
-            elif isinstance(node, ast.FunctionDef):
+            if isinstance(node, ast.FunctionDef):
                 if any(
-                    d.id in {'setter', 'getter', 'property'}
-                    for d in node.decorator_list if isinstance(d, ast.Attribute)
+                    (isinstance(d, ast.Name) and d.id in {'setter', 'getter', 'property'}) or
+                    (isinstance(d, ast.Attribute) and d.attr in {'setter', 'getter', 'property'})
+                    for d in node.decorator_list
                 ):
                     properties.append(node)
                 else:
                     methods.append(node)
+            elif isinstance(node, ast.Assign):
+                if any(
+                    isinstance(target, ast.Attribute) and target.value.id == "self"
+                    for target in node.targets
+                ):
+                    dependent_assignments.append(node)
+                else:
+                    assignments.append(node)
 
-        # Identify dependent assignments
-        for assign in assignments:
-            right_side_names = extract_names_from_assignment(assign)
-            if any(name in right_side_names for name in methods):
-                dependent_assignments.append(assign)
-        for assign in dependent_assignments:
-            assignments.remove(assign)
+        return assignments + properties + methods + dependent_assignments
 
-        # Sort functions alphabetically
-        properties = sorted(properties, key=lambda node: node.name)
-        methods = sorted(methods, key=lambda node: node.name)
-
-        # Assemble class content
-        reordered_content = []
-        reordered_content.extend(assignments)
-        if properties:
-            reordered_content.append("# Properties #")
-            reordered_content.append("# ---------- #")
-            reordered_content.extend(properties)
-        if methods:
-            reordered_content.append("# Instance Methods #")
-            reordered_content.append("# ---------------- #")
-            reordered_content.extend(methods)
-        reordered_content.extend(dependent_assignments)
-
-        return reordered_content
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
