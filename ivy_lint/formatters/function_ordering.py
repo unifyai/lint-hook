@@ -203,8 +203,6 @@ class FunctionOrderingFormatter(BaseFormatter):
                 else:
                     return (1, 0, target_str)
 
-
-
             if isinstance(node, ast.ClassDef):
                 try:
                     return (2, sorted_classes.index(node.name), node.name)
