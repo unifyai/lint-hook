@@ -309,19 +309,13 @@ class FunctionOrderingFormatter(BaseFormatter):
 
             last_function_type = current_function_type or last_function_type
 
-            if isinstance(node, ast.Assign):
-                if prev_was_assignment:
-                    reordered_code_list.append(code.strip())
-                else:
-                    reordered_code_list.append(code)
-                prev_was_assignment = True
-            else:
-                reordered_code_list.append(code)
-                prev_was_assignment = False
-                
             if isinstance(node, ast.ClassDef):
                 methods = categorize_class_methods(node)
                 
+                class_with_comments = self._extract_node_with_leading_comments(node, source_code)[0]
+                if class_with_comments not in reordered_code_list:
+                    reordered_code_list.append(class_with_comments)
+
                 # Adding properties header
                 if methods["setters"] or methods["getters"] or methods["properties"]:
                     reordered_code_list.append("\n# Properties #\n# ---------- #")
@@ -339,6 +333,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                     )
 
                 continue
+
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
