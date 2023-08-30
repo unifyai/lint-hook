@@ -88,6 +88,47 @@ def related_helper_function(assignment_name, nodes_with_comments):
                 return node.name
     return None
 
+def has_property_related_decorator(node: ast.FunctionDef) -> Tuple[bool, str]:
+    for decorator in node.decorator_list:
+        if isinstance(decorator, ast.Attribute):
+            if decorator.attr in ["setter", "getter"]:
+                return True, decorator.attr
+        elif isinstance(decorator, ast.Name):
+            if decorator.id == "property":
+                return True, decorator.id
+    return False, ""
+
+def is_assignment_independent_of_class_methods(node: ast.Assign, class_methods: List[str]) -> bool:
+    right_side_names = extract_names_from_assignment(node)
+    return not any(name in right_side_names for name in class_methods)
+
+def _sort_class_methods(class_node: ast.ClassDef, nodes_with_comments: List[Tuple[str, ast.AST]]) -> List[Tuple[str, ast.AST]]:
+    properties = []
+    methods = []
+    independent_assignments = []
+    dependent_assignments = []
+
+    class_methods = [node.name for _, node in nodes_with_comments if isinstance(node, ast.FunctionDef) and node.name in [m.name for m in class_node.body if isinstance(m, ast.FunctionDef)]]
+    
+    for code, node in nodes_with_comments:
+        if isinstance(node, ast.FunctionDef) and node.name in class_methods:
+            has_property, property_type = has_property_related_decorator(node)
+            if has_property:
+                properties.append((code, node))
+            else:
+                methods.append((code, node))
+        elif isinstance(node, ast.Assign):
+            if is_assignment_independent_of_class_methods(node, class_methods):
+                independent_assignments.append((code, node))
+            else:
+                dependent_assignments.append((code, node))
+    
+    properties = sorted(properties, key=lambda x: x[1].name)
+    methods = sorted(methods, key=lambda x: x[1].name)
+    
+    result = independent_assignments + [("\n# Properties #\n# ---------- #", None)] + properties + [("\n# Instance Methods #\n# ---------------- #", None)] + methods + dependent_assignments
+    return result
+
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -203,13 +244,10 @@ class FunctionOrderingFormatter(BaseFormatter):
                 else:
                     return (1, 0, target_str)
 
-
-
             if isinstance(node, ast.ClassDef):
-                try:
-                    return (2, sorted_classes.index(node.name), node.name)
-                except ValueError:
-                    return (2, len(sorted_classes), node.name)
+                class_content_sorted = _sort_class_methods(node, nodes_with_comments)
+                class_index = sorted_classes.index(node.name)
+                return (2, class_index, node.name), class_content_sorted
 
             if isinstance(node, ast.FunctionDef):
                 if node.name.startswith("_") or has_st_composite_decorator(node):
@@ -219,7 +257,7 @@ class FunctionOrderingFormatter(BaseFormatter):
 
             return (8, 0, getattr(node, "name", ""))
 
-        nodes_sorted = sorted(nodes_with_comments, key=sort_key)
+        nodes_sorted = sorted(nodes_with_comments, key=lambda x: sort_key(x)[0])
         reordered_code_list = []
 
         # Check and add module-level docstring
