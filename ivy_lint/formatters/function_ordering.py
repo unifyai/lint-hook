@@ -71,20 +71,23 @@ def assignment_build_dependency_graph(nodes_with_comments):
                 if isinstance(target, ast.Name):
                     for name in right_side_names:
                         if graph.has_node(name):
-
                             graph.add_edge(name, target.id)
     return graph
+
 
 def has_st_composite_decorator(node: ast.FunctionDef) -> bool:
     return any(
         isinstance(decorator, ast.Attribute) and decorator.attr == "composite"
         for decorator in node.decorator_list
     )
-    
+
+
 def related_helper_function(assignment_name, nodes_with_comments):
     for _, node in nodes_with_comments:
         if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and hasattr(node, "name"):
-            if node.name.startswith("_") and contains_any_name(ast.dump(node), [assignment_name]):
+            if node.name.startswith("_") and contains_any_name(
+                ast.dump(node), [assignment_name]
+            ):
                 return node.name
     return None
 
@@ -187,23 +190,26 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, ast.Assign):
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
                 target_str = ",".join(targets)
-                
-                related_function = related_helper_function(target_str, nodes_with_comments)
+
+                related_function = related_helper_function(
+                    target_str, nodes_with_comments
+                )
                 if related_function:
                     function_position = [
-                        i for i, (_, n) in enumerate(nodes_with_comments) 
-                        if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and hasattr(n, "name") and n.name == related_function
+                        i
+                        for i, (_, n) in enumerate(nodes_with_comments)
+                        if isinstance(n, (ast.FunctionDef, ast.ClassDef))
+                        and hasattr(n, "name")
+                        and n.name == related_function
                     ][0]
                     return (6, function_position, target_str)
-                
+
                 if _is_assignment_dependent_on_assignment(node):
                     return (7, 0, target_str)
                 elif _is_assignment_dependent_on_function_or_class(node):
                     return (6, 0, target_str)
                 else:
                     return (1, 0, target_str)
-
-
 
             if isinstance(node, ast.ClassDef):
                 try:
