@@ -90,66 +90,6 @@ def related_helper_function(assignment_name, nodes_with_comments):
 
 
 class FunctionOrderingFormatter(BaseFormatter):
-    def _sort_class_content(self, class_node, source_code: str):
-        tree = ast.parse(source_code)
-        nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
-
-        # Dependency graph for assignments
-        assignment_dependency_graph = assignment_build_dependency_graph(
-            nodes_with_comments
-        )
-
-        def _is_assignment_dependent_on_other_functions(node):
-            if isinstance(node, ast.Assign):
-                right_side_names = extract_names_from_assignment(node)
-                function_names = [
-                    node.name
-                    for _, node in nodes_with_comments
-                    if isinstance(node, (ast.FunctionDef, ast.ClassDef))
-                ]
-                return any(name in right_side_names for name in function_names)
-            return False
-
-        def sort_key(item):
-            node = item[1]
-            if isinstance(node, ast.Assign):
-                if _is_assignment_dependent_on_other_functions(node):
-                    return (4, 0)
-                else:
-                    return (1, 0)
-            
-            if isinstance(node, ast.FunctionDef):
-                for decorator in node.decorator_list:
-                    if isinstance(decorator, ast.Attribute) and decorator.attr in ["setter", "getter"]:
-                        return (2, node.name)
-                    if isinstance(decorator, ast.Name) and decorator.id == "property":
-                        return (2, node.name)
-                return (3, node.name)
-            return (5, 0)
-
-        nodes_sorted = sorted(nodes_with_comments, key=sort_key)
-
-        # Construct the output string
-        ordered_code_list = []
-        added_properties_header = False
-        added_instance_methods_header = False
-
-        for code, node in nodes_sorted:
-            if isinstance(node, ast.FunctionDef) and not added_properties_header:
-                for decorator in node.decorator_list:
-                    if isinstance(decorator, (ast.Attribute, ast.Name)) and (decorator.attr in ["setter", "getter"] or decorator.id == "property"):
-                        ordered_code_list.append("# Properties #\n# ---------- #\n")
-                        added_properties_header = True
-                        break
-
-            if isinstance(node, ast.FunctionDef) and not added_instance_methods_header and not node.name.startswith("_"):
-                ordered_code_list.append("\n# Instance Methods #\n# ---------------- #\n")
-                added_instance_methods_header = True
-
-            ordered_code_list.append(code)
-
-        return "\n".join(ordered_code_list)
-    
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
@@ -302,11 +242,6 @@ class FunctionOrderingFormatter(BaseFormatter):
         last_function_type = None
 
         for code, node in nodes_sorted:
-            if isinstance(node, ast.ClassDef):
-                class_content = self._sort_class_content(node, code)
-                reordered_code_list.append(class_content)
-            else:
-                reordered_code_list.append(code)
             # If the docstring was added at the beginning, skip the node
             if (
                 docstring_added
