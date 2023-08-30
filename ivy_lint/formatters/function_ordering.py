@@ -88,40 +88,6 @@ def related_helper_function(assignment_name, nodes_with_comments):
                 return node.name
     return None
 
-def extract_property_name(decorator: ast.expr) -> str:
-    if isinstance(decorator, ast.Attribute):
-        return decorator.value.id
-    return None
-
-def categorize_class_methods(node: ast.ClassDef) -> dict:
-    categories = {"setters": [], "getters": [], "properties": [], "methods": []}
-
-    for n in node.body:
-        if isinstance(n, ast.FunctionDef):
-            if any(
-                isinstance(d, ast.Attribute) and d.attr == "setter"
-                for d in n.decorator_list
-            ):
-                categories["setters"].append(n)
-            elif any(
-                isinstance(d, ast.Attribute) and d.attr == "getter"
-                for d in n.decorator_list
-            ):
-                categories["getters"].append(n)
-            elif any(
-                isinstance(d, ast.Name) and d.id == "property"
-                for d in n.decorator_list
-            ):
-                categories["properties"].append(n)
-            else:
-                categories["methods"].append(n)
-
-    # Sorting methods in each category alphabetically
-    for cat in categories:
-        categories[cat].sort(key=lambda x: x.name)
-
-    return categories
-
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -239,14 +205,6 @@ class FunctionOrderingFormatter(BaseFormatter):
 
             if isinstance(node, ast.ClassDef):
                 try:
-                    # Sorting and arranging the class content
-                    methods = categorize_class_methods(node)
-                    sorted_class_content = (
-                        methods["setters"]
-                        + methods["getters"]
-                        + methods["properties"]
-                        + methods["methods"]
-                    )
                     return (2, sorted_classes.index(node.name), node.name)
                 except ValueError:
                     return (2, len(sorted_classes), node.name)
@@ -309,31 +267,15 @@ class FunctionOrderingFormatter(BaseFormatter):
 
             last_function_type = current_function_type or last_function_type
 
-            if isinstance(node, ast.ClassDef):
-                methods = categorize_class_methods(node)
-                
-                class_with_comments = self._extract_node_with_leading_comments(node, source_code)[0]
-                if class_with_comments not in reordered_code_list:
-                    reordered_code_list.append(class_with_comments)
-
-                # Adding properties header
-                if methods["setters"] or methods["getters"] or methods["properties"]:
-                    reordered_code_list.append("\n# Properties #\n# ---------- #")
-                    reordered_code_list.extend(
-                        self._extract_node_with_leading_comments(method, source_code)[0]
-                        for method in methods["setters"] + methods["getters"] + methods["properties"]
-                    )
-                
-                # Adding instance methods header
-                if methods["methods"]:
-                    reordered_code_list.append("\n# Instance Methods #\n# ---------------- #")
-                    reordered_code_list.extend(
-                        self._extract_node_with_leading_comments(method, source_code)[0]
-                        for method in methods["methods"]
-                    )
-
-                continue
-
+            if isinstance(node, ast.Assign):
+                if prev_was_assignment:
+                    reordered_code_list.append(code.strip())
+                else:
+                    reordered_code_list.append(code)
+                prev_was_assignment = True
+            else:
+                reordered_code_list.append(code)
+                prev_was_assignment = False
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
