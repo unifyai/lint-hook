@@ -91,6 +91,12 @@ def related_helper_function(assignment_name, nodes_with_comments):
                 return node.name
     return None
 
+def _is_assignment_target_an_attribute(node):
+    if isinstance(node, ast.Assign):
+        for target in node.targets:
+            if isinstance(target, ast.Attribute):
+                return True
+    return False
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -203,6 +209,9 @@ class FunctionOrderingFormatter(BaseFormatter):
                         and n.name == related_function
                     ][0]
                     return (6, function_position, target_str)
+
+                if _is_assignment_target_an_attribute(node):
+                    return (5.5, 0, target_str) 
 
                 if _is_assignment_dependent_on_assignment(node):
                     return (7, 0, target_str)
