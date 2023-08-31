@@ -91,7 +91,9 @@ def related_helper_function(assignment_name, nodes_with_comments):
                 return node.name
     return None
 
-def is_function_or_class_attribute(target: ast.Name) -> bool:
+def is_function_or_class_attribute(target):
+    if isinstance(target, ast.Attribute):
+        return True  # or handle it differently based on your requirements
     return '.' in target.id
 
 class FunctionOrderingFormatter(BaseFormatter):
