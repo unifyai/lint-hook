@@ -11,7 +11,7 @@ HEADER_PATTERN = re.compile(
     r" Functions)\s?(-{0,3})\s?#\n#\s?(-{7,15})\s?#\n(?:\s*\n)*"
 )
 FILE_PATTERN = re.compile(
-    r"(ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*"
+    r"(ivy/functional/(?!.*(?:config\.py|__init__\.py)$).*"
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
