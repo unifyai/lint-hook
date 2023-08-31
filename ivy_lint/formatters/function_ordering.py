@@ -71,7 +71,7 @@ def assignment_build_dependency_graph(nodes_with_comments):
                 if isinstance(target, ast.Name):
                     for name in right_side_names:
                         if graph.has_node(name):
-                            graph.add_edge(name, target.id)
+                            graph.add_edge(target.id, name)
     return graph
 
 
@@ -207,7 +207,16 @@ class FunctionOrderingFormatter(BaseFormatter):
                 if _is_assignment_dependent_on_assignment(node):
                     return (7, 0, target_str)
                 elif _is_assignment_dependent_on_function_or_class(node):
-                    return (6, 0, target_str)
+                    function_or_class_positions = [
+                        i
+                        for i, (_, n) in enumerate(nodes_with_comments)
+                        if isinstance(n, (ast.FunctionDef, ast.ClassDef))
+                        and any(name in extract_names_from_assignment(node) for name in [n.name])
+                    ]
+                    if function_or_class_positions:
+                        return (6, max(function_or_class_positions) + 1, target_str)
+                    else:
+                        return (6, 0, target_str)
                 else:
                     return (1, 0, target_str)
 
