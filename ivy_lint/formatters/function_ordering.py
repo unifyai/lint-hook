@@ -91,10 +91,6 @@ def related_helper_function(assignment_name, nodes_with_comments):
                 return node.name
     return None
 
-def is_function_or_class_attribute(target):
-    if isinstance(target, ast.Attribute):
-        return True  # or handle it differently based on your requirements
-    return '.' in target.id
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -194,10 +190,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, ast.Assign):
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
                 target_str = ",".join(targets)
-                
-                # Check if target is function or class attribute
-                if any(is_function_or_class_attribute(target) for target in node.targets):
-                    return (9, 0, target_str)
 
                 related_function = related_helper_function(
                     target_str, nodes_with_comments
