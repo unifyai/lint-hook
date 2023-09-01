@@ -137,53 +137,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             self._extract_node_with_leading_comments(node, source_code)
             for node in tree.body
         ]
-        
-    def _rearrange_functions_inside_class(self, class_code: str) -> str:
-        tree = ast.parse(class_code)
-        nodes_with_comments = self._extract_all_nodes_with_comments(tree, class_code)
-
-        independent_assignments = []
-        properties = []
-        instance_methods = []
-        dependent_assignments = []
-
-        for code, node in nodes_with_comments:
-            if isinstance(node, ast.Assign):
-                # Determine if the assignment is dependent on other functions in the class
-                right_side_names = extract_names_from_assignment(node)
-                dependent = any(
-                    name in right_side_names for _, n in nodes_with_comments if isinstance(n, ast.FunctionDef) and n.name == name
-                )
-
-                if dependent:
-                    dependent_assignments.append(code)
-                else:
-                    independent_assignments.append(code)
-
-            elif isinstance(node, ast.FunctionDef):
-                decorators = {decorator.attr for decorator in node.decorator_list if isinstance(decorator, ast.Attribute)}
-                if "setter" in decorators or "getter" in decorators or any(attr for attr in decorators if attr.startswith("property")):
-                    properties.append(code)
-                else:
-                    instance_methods.append(code)
-
-        properties = sorted(properties)
-        instance_methods = sorted(instance_methods)
-
-        # Combine all the sections
-        sections = []
-        sections.extend(independent_assignments)
-        if properties:
-            sections.append("# Properties #")
-            sections.append("# ---------- #")
-            sections.extend(properties)
-        if instance_methods:
-            sections.append("# Instance Methods #")
-            sections.append("# ---------------- #")
-            sections.extend(instance_methods)
-        sections.extend(dependent_assignments)
-
-        return "\n".join(sections)
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
@@ -342,18 +295,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             else:
                 reordered_code_list.append(code)
                 prev_was_assignment = False
-                
-        reordered_code_list = []
-        for code, node in nodes_with_comments:
-            if isinstance(node, ast.ClassDef):
-                class_code = code + '\n'.join(
-                    child_code
-                    for child_code, child_node in self._extract_all_nodes_with_comments(node, source_code)
-                )
-                reordered_class_code = self._rearrange_functions_inside_class(class_code)
-                reordered_code_list.append(reordered_class_code)
-            else:
-                reordered_code_list.append(code)
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
