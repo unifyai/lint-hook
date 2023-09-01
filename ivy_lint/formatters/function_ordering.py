@@ -152,6 +152,11 @@ class FunctionOrderingFormatter(BaseFormatter):
         # Filter out existing headers
         nodes_with_comments = [(code, node) for code, node in nodes_with_comments if not _is_header_line(code)]
 
+        # If the class only has a pass statement, return immediately
+        if len(nodes_with_comments) == 1 and isinstance(nodes_with_comments[0][1], ast.Pass):
+            class_definition = source_code.splitlines()[class_node.lineno - 1]
+            return [class_definition, '    pass']
+
         # Grouping nodes
         non_dependent_assignments = []
         properties = []
