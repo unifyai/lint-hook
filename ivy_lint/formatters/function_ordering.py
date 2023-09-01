@@ -323,6 +323,8 @@ class FunctionOrderingFormatter(BaseFormatter):
         prev_was_assignment = False
         last_function_type = None
 
+        included_functions = set()
+        
         for code, node in nodes_sorted:
             # If the docstring was added at the beginning, skip the node
             if (
