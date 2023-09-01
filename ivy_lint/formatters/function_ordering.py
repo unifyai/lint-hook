@@ -101,7 +101,7 @@ def _is_assignment_target_an_attribute(node):
 
 
 class FunctionOrderingFormatter(BaseFormatter):
-    def _reorder_class_body(self, class_node: ast.ClassDef, source_code: str) -> List[str]:
+    def _reorder_class_body(self, class_node: ast.ClassDef) -> List[ast.AST]:
         class_body = class_node.body
 
         # Separate assignments, properties, and other functions
@@ -127,17 +127,12 @@ class FunctionOrderingFormatter(BaseFormatter):
         reordered_class_body = []
 
         reordered_class_body.extend(assignments)  # Add assignments first
-        if properties: 
-            reordered_class_body.append("# Properties #")
-            reordered_class_body.append("# ---------- #")
-            reordered_class_body.extend(properties)
-        if functions:
-            reordered_class_body.append("# Instance Methods #")
-            reordered_class_body.append("# ---------------- #")
-            reordered_class_body.extend(functions)
+        reordered_class_body.extend(properties)
+        reordered_class_body.extend(functions)
         reordered_class_body.extend(dependent_assignments)  # Add dependent assignments last
 
-        return [self._extract_node_with_leading_comments(node, source_code)[0] for node in reordered_class_body]
+        return reordered_class_body
+
 
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
@@ -261,7 +256,12 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (1, 0, target_str)
 
             if isinstance(node, ast.ClassDef):
-                reordered_code_list.extend(self._reorder_class_body(node, source_code))
+                reordered_nodes = self._reorder_class_body(node)
+                nodes_with_comments.extend(
+                    (reordered_node, self._extract_node_with_leading_comments(reordered_node, source_code)[1])
+                    for reordered_node in reordered_nodes
+                )
+
 
 
             if isinstance(node, ast.FunctionDef):
