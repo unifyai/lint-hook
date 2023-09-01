@@ -147,6 +147,7 @@ class FunctionOrderingFormatter(BaseFormatter):
         ]
         def _is_header_line(line: str) -> bool:
             return line.strip() in HEADERS
+
         nodes_with_comments = self._extract_all_nodes_with_comments(class_node, source_code)
 
         # Filter out existing headers
@@ -157,55 +158,30 @@ class FunctionOrderingFormatter(BaseFormatter):
             class_definition = source_code.splitlines()[class_node.lineno - 1]
             return [class_definition, '    pass']
 
-        # Grouping nodes
-        non_dependent_assignments = []
         properties = []
         instance_methods = []
+        independent_assignments = []
         dependent_assignments = []
 
         for code, node in nodes_with_comments:
-            if isinstance(node, ast.Assign):
+            if isinstance(node, ast.FunctionDef):
+                if any(isinstance(dec, ast.Attribute) and dec.attr in ["setter", "getter"] for dec in node.decorator_list):
+                    properties.append(code)
+                else:
+                    instance_methods.append(code)
+            elif isinstance(node, ast.Assign):
+                # Check if assignment depends on any function
                 right_side_names = extract_names_from_assignment(node)
-                if any(
-                    name == target.id for target in node.targets for func, _ in nodes_with_comments
-                    if isinstance(func, ast.FunctionDef) and func.name == name
-                ):
-                    dependent_assignments.append((code, node))
+                if any(name == fn_name for fn_name in map(lambda x: x[1].name, nodes_with_comments) for name in right_side_names):
+                    dependent_assignments.append(code)
                 else:
-                    non_dependent_assignments.append((code, node))
-            elif isinstance(node, ast.FunctionDef):
-                has_property_decorator = False
-                for decorator in node.decorator_list:
-                    if isinstance(decorator, ast.Attribute) and decorator.attr in ['setter', 'getter']:
-                        has_property_decorator = True
-                        break
-                    if isinstance(decorator, ast.Name) and decorator.id == 'property':
-                        has_property_decorator = True
-                        break
-                if has_property_decorator:
-                    properties.append((code, node))
-                else:
-                    instance_methods.append((code, node))
+                    independent_assignments.append(code)
 
-        # Sorting nodes
-        properties.sort(key=lambda x: x[1].name)
-        instance_methods.sort(key=lambda x: x[1].name)
-
-        # Merge dependent assignments with instance_methods and sort them together
-        instance_methods += dependent_assignments
-        instance_methods.sort(key=lambda x: x[1].name if isinstance(x[1], ast.FunctionDef) else '')
-
-        sorted_nodes = non_dependent_assignments + [
-            ("# Properties #", None),
-            ("# ---------- #", None)
-        ] + properties + [
-            ("# Instance Methods #", None),
-            ("# ---------------- #", None)
-        ] + instance_methods
-
-        # Adding the class definition on top
-        class_definition = source_code.splitlines()[class_node.lineno - 1]
-        return [class_definition] + [code for code, _ in sorted_nodes]
+        reordered_members = independent_assignments
+        if properties:
+            reordered_members += ['\n    # Properties #\n    # ---------- #'] + properties
+        reordered_members += ['\n    # Instance Methods #\n    # ---------------- #'] + instance_methods + dependent_assignments
+        return reordered_members
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
