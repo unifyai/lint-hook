@@ -15,49 +15,6 @@ FILE_PATTERN = re.compile(
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
-def extract_property_name(decorator) -> str:
-    if isinstance(decorator, ast.Attribute):
-        return decorator.value.id
-    return None
-
-def sort_class_methods(node: ast.ClassDef, source_code: str) -> List[str]:
-    methods = []
-    setters_getters = []
-    other_functions = []
-    assignments_no_depends = []
-    assignments_depends = []
-
-    for item in node.body:
-        code, _ = extract_node_with_leading_comments(item, source_code)
-        if isinstance(item, ast.FunctionDef):
-            if any(map(lambda d: isinstance(d, (ast.Attribute, ast.Name)), item.decorator_list)):
-                prop_name = next((extract_property_name(decorator) for decorator in item.decorator_list), None)
-                if prop_name and (prop_name + ".setter" in ast.dump(item) or prop_name + ".getter" in ast.dump(item) or "property" in ast.dump(item)):
-                    setters_getters.append((item.name, code))
-                else:
-                    other_functions.append((item.name, code))
-            else:
-                other_functions.append((item.name, code))
-        elif isinstance(item, ast.Assign):
-            # For simplicity, let's say if assignment uses any function call, it depends on other functions
-            if any(isinstance(child, ast.Call) for child in ast.walk(item)):
-                assignments_depends.append(code)
-            else:
-                assignments_no_depends.append(code)
-
-    # Sorting alphabetically for methods
-    setters_getters = [code for _, code in sorted(setters_getters, key=lambda x: x[0])]
-    other_functions = [code for _, code in sorted(other_functions, key=lambda x: x[0])]
-
-    # Construct the sorted class methods
-    class_methods_sorted = assignments_no_depends
-    if setters_getters:
-        class_methods_sorted += ["\n# Properties #", "# ---------- #"] + setters_getters
-    if other_functions:
-        class_methods_sorted += ["\n# Instance Methods #", "# ---------------- #"] + other_functions
-    class_methods_sorted += assignments_depends
-    return class_methods_sorted
-
 def class_build_dependency_graph(nodes_with_comments):
     graph = nx.DiGraph()
     for _, node in nodes_with_comments:
@@ -143,6 +100,50 @@ def _is_assignment_target_an_attribute(node):
 
 
 class FunctionOrderingFormatter(BaseFormatter):
+    
+    def extract_property_name(decorator) -> str:
+        if isinstance(decorator, ast.Attribute):
+            return decorator.value.id
+        return None
+
+    def sort_class_methods(node: ast.ClassDef, source_code: str) -> List[str]:
+        methods = []
+        setters_getters = []
+        other_functions = []
+        assignments_no_depends = []
+        assignments_depends = []
+
+        for item in node.body:
+            code, _ = extract_node_with_leading_comments(item, source_code)
+            if isinstance(item, ast.FunctionDef):
+                if any(map(lambda d: isinstance(d, (ast.Attribute, ast.Name)), item.decorator_list)):
+                    prop_name = next((extract_property_name(decorator) for decorator in item.decorator_list), None)
+                    if prop_name and (prop_name + ".setter" in ast.dump(item) or prop_name + ".getter" in ast.dump(item) or "property" in ast.dump(item)):
+                        setters_getters.append((item.name, code))
+                    else:
+                        other_functions.append((item.name, code))
+                else:
+                    other_functions.append((item.name, code))
+            elif isinstance(item, ast.Assign):
+                # For simplicity, let's say if assignment uses any function call, it depends on other functions
+                if any(isinstance(child, ast.Call) for child in ast.walk(item)):
+                    assignments_depends.append(code)
+                else:
+                    assignments_no_depends.append(code)
+
+        # Sorting alphabetically for methods
+        setters_getters = [code for _, code in sorted(setters_getters, key=lambda x: x[0])]
+        other_functions = [code for _, code in sorted(other_functions, key=lambda x: x[0])]
+
+        # Construct the sorted class methods
+        class_methods_sorted = assignments_no_depends
+        if setters_getters:
+            class_methods_sorted += ["\n# Properties #", "# ---------- #"] + setters_getters
+        if other_functions:
+            class_methods_sorted += ["\n# Instance Methods #", "# ---------------- #"] + other_functions
+        class_methods_sorted += assignments_depends
+        return class_methods_sorted
+    
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
