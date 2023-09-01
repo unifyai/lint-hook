@@ -3,6 +3,7 @@ import ast
 import networkx as nx
 from typing import Tuple, List
 import sys
+from functools import partial
 
 from ivy_lint.formatters import BaseFormatter
 
@@ -99,43 +100,65 @@ def _is_assignment_target_an_attribute(node):
                 return True
     return False
 
+def _is_property_related_decorator(decorator):
+    """Check if a decorator corresponds to a property-like decorator."""
+    if isinstance(decorator, ast.Attribute):
+        attr = decorator.attr
+        return attr in ["setter", "getter"] or decorator.value.id == "property"
+    return False
 
-def get_property_name_from_decorator(decorator: ast.Attribute) -> str:
-    if isinstance(decorator.value, ast.Name):
-        return decorator.value.id
-    return None
+def _class_node_sort_key(class_node, nodes_with_comments):
+    """Sorting key for methods and assignments inside a class."""
 
+    # Categorize by node type
+    if isinstance(class_node, ast.FunctionDef):
+        # Check if it's a property-related function
+        if any(
+            _is_property_related_decorator(decorator)
+            for decorator in class_node.decorator_list
+        ):
+            return (2, class_node.name)  # properties
+        else:
+            return (3, class_node.name)  # instance methods
+    elif isinstance(class_node, ast.Assign):
+        # Check if the assignment depends on other methods in the class
+        right_side_names = extract_names_from_assignment(class_node)
+        method_names = [
+            node.name for _, node in nodes_with_comments if isinstance(node, ast.FunctionDef)
+        ]
+        if any(name in right_side_names for name in method_names):
+            return (4, class_node.name)  # assignments that depend on methods
+        else:
+            return (1, class_node.name)  # independent assignments
+    return (5, "")  # anything else
 
-def sort_class_members(nodes_with_comments):
-    class_member_order = {
-        "independent_assignments": [],
-        "properties": [],
-        "methods": [],
-        "dependent_assignments": []
-    }
+def _rearrange_methods_and_assignments_within_class(class_code, class_node, nodes_with_comments):
+    """Rearrange methods and assignments inside a class based on the criteria."""
+    # Extract the body of the class
+    class_body_with_comments = [
+        (code, node) for code, node in nodes_with_comments if node in class_node.body
+    ]
 
-    class_members = [node for _, node in nodes_with_comments if isinstance(node, (ast.FunctionDef, ast.Assign))]
-    
-    for member in class_members:
-        if isinstance(member, ast.Assign):
-            # Add logic to categorize assignments
-            if _is_assignment_dependent_on_function_or_class(member):
-                class_member_order["dependent_assignments"].append(member)
-            else:
-                class_member_order["independent_assignments"].append(member)
-        elif isinstance(member, ast.FunctionDef):
-            for decorator in member.decorator_list:
-                if isinstance(decorator, ast.Attribute) and decorator.attr in ["setter", "getter"]:
-                    class_member_order["properties"].append(member)
-                    break
-            else:
-                class_member_order["methods"].append(member)
-                
-    # Now sort the properties and methods alphabetically
-    class_member_order["properties"] = sorted(class_member_order["properties"], key=lambda x: x.name)
-    class_member_order["methods"] = sorted(class_member_order["methods"], key=lambda x: x.name)
-    
-    return class_member_order
+    # Sort based on the defined criteria
+    class_body_sorted = sorted(
+        class_body_with_comments, key=partial(_class_node_sort_key, nodes_with_comments=nodes_with_comments)
+    )
+
+    # Insert headers
+    reordered_code_list = []
+    last_category = None
+    for code, node in class_body_sorted:
+        current_category = _class_node_sort_key(node, nodes_with_comments)[0]
+        if current_category != last_category:
+            if current_category == 2:
+                reordered_code_list.append("# Properties #\n# ---------- #")
+            elif current_category == 3:
+                reordered_code_list.append("# Instance Methods #\n# ---------------- #")
+        reordered_code_list.append(code)
+        last_category = current_category
+
+    return "\n".join(reordered_code_list)
+
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -184,6 +207,14 @@ class FunctionOrderingFormatter(BaseFormatter):
         # Dependency graph for class inheritance
         class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
         sorted_classes = list(nx.topological_sort(class_dependency_graph))
+        
+        # Extract class nodes
+        class_nodes = [
+            (code, node) for code, node in nodes_with_comments if isinstance(node, ast.ClassDef)
+        ]
+        for class_code, class_node in class_nodes:
+            rearranged_class_content = _rearrange_methods_and_assignments_within_class(class_code, class_node, nodes_with_comments)
+            source_code = source_code.replace(class_code, rearranged_class_content)
 
         # Dependency graph for assignments
         assignment_dependency_graph = assignment_build_dependency_graph(
@@ -332,31 +363,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             else:
                 reordered_code_list.append(code)
                 prev_was_assignment = False
-                
-            if isinstance(node, ast.ClassDef):
-                class_member_order = sort_class_members(nodes_with_comments)
-                
-                # Append the independent assignments
-                for assign_node in class_member_order["independent_assignments"]:
-                    reordered_code_list.append(ast.dump(assign_node))
-                
-                # Append the properties
-                if class_member_order["properties"]:
-                    reordered_code_list.append("# Properties #")
-                    reordered_code_list.append("# ---------- #")
-                    for prop_node in class_member_order["properties"]:
-                        reordered_code_list.append(ast.dump(prop_node))
-
-                # Append the methods
-                if class_member_order["methods"]:
-                    reordered_code_list.append("# Instance Methods #")
-                    reordered_code_list.append("# ---------------- #")
-                    for method_node in class_member_order["methods"]:
-                        reordered_code_list.append(ast.dump(method_node))
-                
-                # Append the dependent assignments
-                for assign_node in class_member_order["dependent_assignments"]:
-                    reordered_code_list.append(ast.dump(assign_node))
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
