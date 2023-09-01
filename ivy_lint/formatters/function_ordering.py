@@ -148,37 +148,6 @@ class FunctionOrderingFormatter(BaseFormatter):
                 return True
         return False
     
-    @staticmethod
-    def get_class_elements_ordering(node, nodes_with_comments):
-        non_dependent_assignments = []
-        properties = []
-        other_functions = []
-        dependent_assignments = []
-
-        if not isinstance(node, ast.ClassDef):
-            return []
-
-        function_names = [
-            n.name for _, n in nodes_with_comments if isinstance(n, ast.FunctionDef)
-        ]
-        
-        for _, inner_node in nodes_with_comments:
-            if isinstance(inner_node, ast.FunctionDef) and is_property_related_decorator(inner_node):
-                properties.append(inner_node)
-            elif isinstance(inner_node, ast.FunctionDef):
-                other_functions.append(inner_node)
-            elif isinstance(inner_node, ast.Assign):
-                right_side_names = extract_names_from_assignment(inner_node)
-                if any(name in right_side_names for name in function_names):
-                    dependent_assignments.append(inner_node)
-                else:
-                    non_dependent_assignments.append(inner_node)
-        
-        # Sort function alphabetically
-        properties = sorted(properties, key=lambda x: x.name)
-        other_functions = sorted(other_functions, key=lambda x: x.name)
-
-        return non_dependent_assignments + properties + other_functions + dependent_assignments
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
@@ -226,6 +195,37 @@ class FunctionOrderingFormatter(BaseFormatter):
             return False
 
         def sort_key(item):
+            def get_class_elements_ordering(node, nodes_with_comments):
+                non_dependent_assignments = []
+                properties = []
+                other_functions = []
+                dependent_assignments = []
+
+                if not isinstance(node, ast.ClassDef):
+                    return []
+
+                function_names = [
+                    n.name for _, n in nodes_with_comments if isinstance(n, ast.FunctionDef)
+                ]
+                
+                for _, inner_node in nodes_with_comments:
+                    if isinstance(inner_node, ast.FunctionDef) and is_property_related_decorator(inner_node):
+                        properties.append(inner_node)
+                    elif isinstance(inner_node, ast.FunctionDef):
+                        other_functions.append(inner_node)
+                    elif isinstance(inner_node, ast.Assign):
+                        right_side_names = extract_names_from_assignment(inner_node)
+                        if any(name in right_side_names for name in function_names):
+                            dependent_assignments.append(inner_node)
+                        else:
+                            non_dependent_assignments.append(inner_node)
+                
+                # Sort function alphabetically
+                properties = sorted(properties, key=lambda x: x.name)
+                other_functions = sorted(other_functions, key=lambda x: x.name)
+
+                return non_dependent_assignments + properties + other_functions + dependent_assignments
+            
             node = item[1]
 
             if isinstance(node, (ast.Import, ast.ImportFrom)):
