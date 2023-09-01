@@ -15,6 +15,60 @@ FILE_PATTERN = re.compile(
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
+def categorize_and_sort_class_content(node, nodes_with_comments):
+    independent_assignments = []
+    dependent_assignments = []
+    properties = []
+    instance_methods = []
+
+    for _, child_node in nodes_with_comments:
+        if isinstance(child_node, ast.FunctionDef):
+            # check for @property, @<name>.getter, @<name>.setter decorators
+            if any(
+                isinstance(dec, ast.Name) and dec.id == 'property'
+                for dec in child_node.decorator_list
+            ):
+                properties.append(child_node)
+            elif any(
+                isinstance(dec, ast.Attribute) and dec.attr in ('getter', 'setter')
+                for dec in child_node.decorator_list
+            ):
+                properties.append(child_node)
+            else:
+                instance_methods.append(child_node)
+        
+        elif isinstance(child_node, ast.Assign):
+            # Check if assignment depends on other functions inside the class
+            names_in_class = [n.name for n in node.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
+            if contains_any_name(ast.dump(child_node), names_in_class):
+                dependent_assignments.append(child_node)
+            else:
+                independent_assignments.append(child_node)
+
+    properties = sorted(properties, key=lambda x: x.name)
+    instance_methods = sorted(instance_methods, key=lambda x: x.name)
+
+    return independent_assignments + properties + instance_methods + dependent_assignments
+
+
+def reconstruct_class_with_sorted_content(node, sorted_content):
+    reconstructed = [f"class {node.name}:"]
+    if node.bases:
+        bases = ", ".join(base.id for base in node.bases)
+        reconstructed[0] += f"({bases})"
+    
+    for item in sorted_content:
+        if isinstance(item, ast.FunctionDef):
+            if item in properties:
+                reconstructed.append("# Properties #\n# ---------- #")
+            else:
+                reconstructed.append("# Instance Methods #\n# ---------------- #")
+            reconstructed.extend(ast.get_source_segment(source_code, item).split('\n'))
+        elif isinstance(item, ast.Assign):
+            reconstructed.extend(ast.get_source_segment(source_code, item).split('\n'))
+
+    return "\n    ".join(reconstructed)
+
 
 def class_build_dependency_graph(nodes_with_comments):
     graph = nx.DiGraph()
@@ -99,18 +153,6 @@ def _is_assignment_target_an_attribute(node):
                 return True
     return False
 
-def determine_method_type(node: ast.FunctionDef) -> str:
-    if any(
-        isinstance(decorator, ast.Attribute)
-        and decorator.attr in ["setter", "getter"]
-        for decorator in node.decorator_list
-    ):
-        return "property"
-    elif any(isinstance(decorator, ast.Name) and decorator.id == "property" for decorator in node.decorator_list):
-        return "property"
-    else:
-        return "method"
-
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -155,6 +197,15 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         tree = ast.parse(source_code)
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
+        
+        reordered_code_list = []
+
+        # Loop through nodes to identify classes
+        for code, node in nodes_with_comments:
+            if isinstance(node, ast.ClassDef):
+                sorted_class_content = categorize_and_sort_class_content(node, nodes_with_comments)
+                reordered_class = reconstruct_class_with_sorted_content(node, sorted_class_content)
+                reordered_code_list.append(reordered_class)
 
         # Dependency graph for class inheritance
         class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
@@ -235,44 +286,10 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (1, 0, target_str)
 
             if isinstance(node, ast.ClassDef):
-                internal_assignments = [
-                    (code, sub_node)
-                    for code, sub_node in nodes_with_comments
-                    if isinstance(sub_node, ast.Assign) and _is_assignment_dependent_on_function_or_class(sub_node)
-                ]
-                internal_properties = sorted(
-                    [
-                        (code, sub_node)
-                        for code, sub_node in nodes_with_comments
-                        if isinstance(sub_node, ast.FunctionDef) and determine_method_type(sub_node) == "property"
-                    ],
-                    key=lambda x: x[1].name,
-                )
-                internal_methods = sorted(
-                    [
-                        (code, sub_node)
-                        for code, sub_node in nodes_with_comments
-                        if isinstance(sub_node, ast.FunctionDef) and determine_method_type(sub_node) == "method"
-                    ],
-                    key=lambda x: x[1].name,
-                )
-                other_assignments = [
-                    (code, sub_node)
-                    for code, sub_node in nodes_with_comments
-                    if isinstance(sub_node, ast.Assign) and not _is_assignment_dependent_on_function_or_class(sub_node)
-                ]
-
-                class_content = []
-                class_content.extend(other_assignments)
-                class_content.append(("\n# Properties #\n# ---------- #\n", None))
-                class_content.extend(internal_properties)
-                class_content.append(("\n# Instance Methods #\n# ---------------- #\n", None))
-                class_content.extend(internal_methods)
-                class_content.extend(internal_assignments)
-
-                nodes_with_comments = [item for item in nodes_with_comments if item not in class_content]
-                nodes_with_comments.insert(nodes_with_comments.index((code, node)), *class_content)
-
+                try:
+                    return (2, sorted_classes.index(node.name), node.name)
+                except ValueError:
+                    return (2, len(sorted_classes), node.name)
 
             if isinstance(node, ast.FunctionDef):
                 if node.name.startswith("_") or has_st_composite_decorator(node):
