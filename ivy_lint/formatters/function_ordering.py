@@ -145,22 +145,18 @@ class FunctionOrderingFormatter(BaseFormatter):
             "# Instance Methods #",
             "# ---------------- #",
         ]
-        HEADER_PATTERN = r'^\s*#\s*[a-zA-Z\s]+\s*#\s*$'
-        
-        def _is_header_line(line: str) -> bool:
-            return line.strip() in HEADERS
+        HEADER_PATTERN = re.compile(r'^\s*#\s*[a-zA-Z\s]+\s*#\s*$')
 
         nodes_with_comments = self._extract_all_nodes_with_comments(class_node, source_code)
-        nodes_with_comments = [(code, node) for code, node in nodes_with_comments if not _is_header_line(code)]
 
-        if len(nodes_with_comments) == 1 and isinstance(nodes_with_comments[0][1], ast.Pass):
-            class_definition = source_code.splitlines()[class_node.lineno - 1]
-            return [class_definition, '    pass']
+        # Removing existing headers
+        nodes_with_comments = [(code, node) for code, node in nodes_with_comments if not HEADER_PATTERN.match(code)]
 
         non_dependent_assignments = []
         properties = []
         instance_methods = []
         dependent_assignments = []
+
 
         for code, node in nodes_with_comments:
             if isinstance(node, ast.Assign):
@@ -186,19 +182,17 @@ class FunctionOrderingFormatter(BaseFormatter):
                 else:
                     instance_methods.append((code, node))
 
-        # Sorting nodes
-        properties.sort(key=lambda x: x[1].name)
-        instance_methods.sort(key=lambda x: x[1].name)
-
-        # Merge dependent assignments with instance_methods and sort them together
-        instance_methods += dependent_assignments
+        # Now, sort instance_methods by name first
         instance_methods.sort(key=lambda x: x[1].name if isinstance(x[1], ast.FunctionDef) else '')
-        
-        methods_and_dependencies = instance_methods + dependent_assignments
-        methods_and_dependencies.sort(key=lambda x: (
-            x[1].name if isinstance(x[1], ast.FunctionDef) else float('inf'),
-            x[0] 
-        ))
+
+        # Place dependent assignments after the respective methods
+        for assignment, node in dependent_assignments[:]:
+            for method_code, method_node in instance_methods:
+                if assignment.contains(method_node.name):
+                    idx = instance_methods.index((method_code, method_node))
+                    instance_methods.insert(idx+1, (assignment, node))
+                    dependent_assignments.remove((assignment, node))
+                    break
 
         sorted_nodes = non_dependent_assignments
 
@@ -211,11 +205,11 @@ class FunctionOrderingFormatter(BaseFormatter):
         sorted_nodes += [
             ("# Instance Methods #", None),
             ("# ---------------- #", None)
-        ] + methods_and_dependencies
+        ] + instance_methods
 
         # Removing existing headers from the source code using regex
         source_lines = source_code.splitlines()
-        source_lines = [line for line in source_lines if not re.match(HEADER_PATTERN, line)]
+        source_lines = [line for line in source_lines if not HEADER_PATTERN.match(line)]
 
         class_definition = source_lines[class_node.lineno - 1]
         return [class_definition] + [code for code, _ in sorted_nodes]
