@@ -137,6 +137,42 @@ class FunctionOrderingFormatter(BaseFormatter):
             self._extract_node_with_leading_comments(node, source_code)
             for node in tree.body
         ]
+        
+    def get_property_name_from_decorator(decorator: ast.Attribute) -> str:
+        if isinstance(decorator.value, ast.Name):
+            return decorator.value.id
+        return None
+
+    def sort_class_members(nodes_with_comments):
+        class_member_order = {
+            "independent_assignments": [],
+            "properties": [],
+            "methods": [],
+            "dependent_assignments": []
+        }
+
+        class_members = [node for _, node in nodes_with_comments if isinstance(node, (ast.FunctionDef, ast.Assign))]
+        
+        for member in class_members:
+            if isinstance(member, ast.Assign):
+                # Add logic to categorize assignments
+                if _is_assignment_dependent_on_function_or_class(member):
+                    class_member_order["dependent_assignments"].append(member)
+                else:
+                    class_member_order["independent_assignments"].append(member)
+            elif isinstance(member, ast.FunctionDef):
+                for decorator in member.decorator_list:
+                    if isinstance(decorator, ast.Attribute) and decorator.attr in ["setter", "getter"]:
+                        class_member_order["properties"].append(member)
+                        break
+                else:
+                    class_member_order["methods"].append(member)
+                    
+        # Now sort the properties and methods alphabetically
+        class_member_order["properties"] = sorted(class_member_order["properties"], key=lambda x: x.name)
+        class_member_order["methods"] = sorted(class_member_order["methods"], key=lambda x: x.name)
+        
+        return class_member_order
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
@@ -295,6 +331,31 @@ class FunctionOrderingFormatter(BaseFormatter):
             else:
                 reordered_code_list.append(code)
                 prev_was_assignment = False
+                
+            if isinstance(node, ast.ClassDef):
+                class_member_order = sort_class_members(nodes_with_comments)
+                
+                # Append the independent assignments
+                for assign_node in class_member_order["independent_assignments"]:
+                    reordered_code_list.append(ast.dump(assign_node))
+                
+                # Append the properties
+                if class_member_order["properties"]:
+                    reordered_code_list.append("# Properties #")
+                    reordered_code_list.append("# ---------- #")
+                    for prop_node in class_member_order["properties"]:
+                        reordered_code_list.append(ast.dump(prop_node))
+
+                # Append the methods
+                if class_member_order["methods"]:
+                    reordered_code_list.append("# Instance Methods #")
+                    reordered_code_list.append("# ---------------- #")
+                    for method_node in class_member_order["methods"]:
+                        reordered_code_list.append(ast.dump(method_node))
+                
+                # Append the dependent assignments
+                for assign_node in class_member_order["dependent_assignments"]:
+                    reordered_code_list.append(ast.dump(assign_node))
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
