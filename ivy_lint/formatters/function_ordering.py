@@ -101,63 +101,6 @@ def _is_assignment_target_an_attribute(node):
 
 
 class FunctionOrderingFormatter(BaseFormatter):
-    def is_property_function(node: ast.FunctionDef) -> bool:
-        """Check if a function is a property or its getter/setter."""
-        for decorator in node.decorator_list:
-            if isinstance(decorator, ast.Name) and decorator.id == 'property':
-                return True
-            if isinstance(decorator, ast.Attribute) and decorator.attr in ('getter', 'setter'):
-                return True
-        return False
-
-    def get_property_name(node: ast.FunctionDef) -> str:
-        """Return the property name for a getter/setter."""
-        for decorator in node.decorator_list:
-            if isinstance(decorator, ast.Attribute) and decorator.attr in ('getter', 'setter'):
-                return decorator.value.id
-        return node.name
-
-    def sort_key_class_contents(item):
-        node = item[1]
-
-        if isinstance(node, ast.Assign):
-            right_side_names = extract_names_from_assignment(node)
-            dependent = any(name in right_side_names for name, _ in item)
-            return (4 if dependent else 1, 0, getattr(node, "name", ""))
-
-        if isinstance(node, ast.FunctionDef):
-            if is_property_function(node):
-                return (2, get_property_name(node))
-            else:
-                return (3, node.name)
-
-        return (5, 0, getattr(node, "name", ""))
-
-    def rearrange_class_contents(class_code: str) -> str:
-        tree = ast.parse(class_code)
-        nodes_with_comments = _extract_all_nodes_with_comments(tree, class_code)
-
-        # Sort based on the specific key
-        nodes_sorted = sorted(nodes_with_comments, key=sort_key_class_contents)
-
-        reordered_class = []
-        # Check if properties have been added
-        properties_added = False
-        methods_added = False
-
-        for code, node in nodes_sorted:
-            if isinstance(node, ast.FunctionDef) and is_property_function(node):
-                if not properties_added:
-                    reordered_class.append("\n# Properties #\n# ---------- #\n")
-                    properties_added = True
-            elif isinstance(node, ast.FunctionDef):
-                if not methods_added:
-                    reordered_class.append("\n# Instance Methods #\n# ---------------- #\n")
-                    methods_added = True
-            reordered_class.append(code)
-
-        return "\n".join(reordered_class)
-    
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
@@ -239,6 +182,63 @@ class FunctionOrderingFormatter(BaseFormatter):
                     name in right_side_names for name in function_and_class_names
                 )
             return False
+        
+        def is_property_function(node: ast.FunctionDef) -> bool:
+            """Check if a function is a property or its getter/setter."""
+            for decorator in node.decorator_list:
+                if isinstance(decorator, ast.Name) and decorator.id == 'property':
+                    return True
+                if isinstance(decorator, ast.Attribute) and decorator.attr in ('getter', 'setter'):
+                    return True
+            return False
+
+        def get_property_name(node: ast.FunctionDef) -> str:
+            """Return the property name for a getter/setter."""
+            for decorator in node.decorator_list:
+                if isinstance(decorator, ast.Attribute) and decorator.attr in ('getter', 'setter'):
+                    return decorator.value.id
+            return node.name
+
+        def sort_key_class_contents(item):
+            node = item[1]
+
+            if isinstance(node, ast.Assign):
+                right_side_names = extract_names_from_assignment(node)
+                dependent = any(name in right_side_names for name, _ in item)
+                return (4 if dependent else 1, 0, getattr(node, "name", ""))
+
+            if isinstance(node, ast.FunctionDef):
+                if is_property_function(node):
+                    return (2, get_property_name(node))
+                else:
+                    return (3, node.name)
+
+            return (5, 0, getattr(node, "name", ""))
+
+        def rearrange_class_contents(class_code: str) -> str:
+            tree = ast.parse(class_code)
+            nodes_with_comments = _extract_all_nodes_with_comments(tree, class_code)
+
+            # Sort based on the specific key
+            nodes_sorted = sorted(nodes_with_comments, key=sort_key_class_contents)
+
+            reordered_class = []
+            # Check if properties have been added
+            properties_added = False
+            methods_added = False
+
+            for code, node in nodes_sorted:
+                if isinstance(node, ast.FunctionDef) and is_property_function(node):
+                    if not properties_added:
+                        reordered_class.append("\n# Properties #\n# ---------- #\n")
+                        properties_added = True
+                elif isinstance(node, ast.FunctionDef):
+                    if not methods_added:
+                        reordered_class.append("\n# Instance Methods #\n# ---------------- #\n")
+                        methods_added = True
+                reordered_class.append(code)
+
+            return "\n".join(reordered_class)
 
         def sort_key(item):
             node = item[1]
