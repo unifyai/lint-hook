@@ -102,6 +102,7 @@ def _is_assignment_target_an_attribute(node):
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _sort_class_contents(node, source_code):
+        # Get the entire content of the class
         start_line = node.lineno - 1
         end_line = getattr(node, "end_lineno", node.lineno)
         class_lines = source_code.splitlines()[start_line:end_line]
@@ -208,20 +209,6 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         tree = ast.parse(source_code)
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
-        
-        nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
-
-        class_definitions = [n for _, n in nodes_with_comments if isinstance(n, ast.ClassDef)]
-
-        # Reorder each class content
-        for class_node in class_definitions:
-            reordered_class_content = _sort_class_contents(class_node, source_code)
-            start_line = class_node.lineno - 1
-            end_line = getattr(class_node, "end_lineno", class_node.lineno)
-            source_code_lines = source_code.splitlines()
-            source_code_lines[start_line:end_line] = reordered_class_content.splitlines()
-
-        source_code = "\n".join(source_code_lines)
 
         # Dependency graph for class inheritance
         class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
