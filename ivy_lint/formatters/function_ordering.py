@@ -101,67 +101,70 @@ def _is_assignment_target_an_attribute(node):
 
 
 class FunctionOrderingFormatter(BaseFormatter):
-    def _sort_class_content(self, class_node: ast.ClassDef, source_code: str) -> List[str]:
-        setters = []
-        getters = []
+    def _sort_class_contents(node, source_code):
+        start_line = node.lineno - 1
+        end_line = getattr(node, "end_lineno", node.lineno)
+        class_lines = source_code.splitlines()[start_line:end_line]
+
+        # Extract assignments and methods
+        assignments = []
         properties = []
-        simple_assignments = []
+        instance_methods = []
         dependent_assignments = []
-        other_functions = []
 
-        # Traverse through the class body and categorize functions and assignments
-        for item in class_node.body:
-            if isinstance(item, ast.FunctionDef):
-                decorators = [d.id if isinstance(d, ast.Name) else None for d in item.decorator_list]
-
-                if any(dec.endswith('.setter') for dec in decorators):
-                    setters.append(item)
-                elif any(dec.endswith('.getter') for dec in decorators):
-                    getters.append(item)
-                elif 'property' in decorators:
-                    properties.append(item)
+        for n in node.body:
+            if isinstance(n, ast.Assign):
+                assignments.append(n)
+            elif isinstance(n, ast.FunctionDef):
+                if any(
+                    isinstance(deco, ast.Attribute)
+                    for deco in n.decorator_list
+                    if isinstance(deco, ast.Attribute) and deco.attr in ["setter", "getter"]
+                ):
+                    properties.append(n)
                 else:
-                    other_functions.append(item)
+                    instance_methods.append(n)
 
-            elif isinstance(item, ast.Assign):
-                right_side_names = extract_names_from_assignment(item)
+        # Check for dependencies within assignments
+        all_assignments = set(a.targets[0].id for a in assignments if isinstance(a.targets[0], ast.Name))
+        for a in assignments:
+            if contains_any_name(ast.dump(a.value), list(all_assignments)):
+                dependent_assignments.append(a)
+                assignments.remove(a)
 
-                # Check if the assignment depends on any class function
-                if any(fn.name in right_side_names for fn in other_functions):
-                    dependent_assignments.append(item)
-                else:
-                    simple_assignments.append(item)
+        # Build the sorted content
+        sorted_content = []
 
-        # Sort function definitions alphabetically
-        setters.sort(key=lambda x: x.name)
-        getters.sort(key=lambda x: x.name)
-        properties.sort(key=lambda x: x.name)
-        other_functions.sort(key=lambda x: x.name)
+        # Add assignments
+        for a in assignments:
+            start = a.lineno - 1
+            end = getattr(a, "end_lineno", a.lineno)
+            sorted_content.extend(class_lines[start:end])
 
-        # Construct the class content in the specified order
-        sorted_class_content = []
+        # Add properties with header
+        if properties:
+            sorted_content.extend(["", "# Properties #", "# ---------- #"])
+            for p in properties:
+                start = p.lineno - 1
+                end = getattr(p, "end_lineno", p.lineno)
+                sorted_content.extend(class_lines[start:end])
 
-        for assignment in simple_assignments:
-            sorted_class_content.append(self._extract_node_with_leading_comments(assignment, source_code)[0])
+        # Add instance methods with header
+        if instance_methods:
+            sorted_content.extend(["", "# Instance Methods #", "# ---------------- #"])
+            for m in instance_methods:
+                start = m.lineno - 1
+                end = getattr(m, "end_lineno", m.lineno)
+                sorted_content.extend(class_lines[start:end])
 
-        if properties or setters or getters:
-            sorted_class_content.append("# Properties #\n# ---------- #")
-            for prop in properties:
-                sorted_class_content.append(self._extract_node_with_leading_comments(prop, source_code)[0])
-            for getter in getters:
-                sorted_class_content.append(self._extract_node_with_leading_comments(getter, source_code)[0])
-            for setter in setters:
-                sorted_class_content.append(self._extract_node_with_leading_comments(setter, source_code)[0])
+        # Add dependent assignments
+        for a in dependent_assignments:
+            start = a.lineno - 1
+            end = getattr(a, "end_lineno", a.lineno)
+            sorted_content.extend(class_lines[start:end])
 
-        if other_functions:
-            sorted_class_content.append("# Instance Methods #\n# ---------------- #")
-            for func in other_functions:
-                sorted_class_content.append(self._extract_node_with_leading_comments(func, source_code)[0])
+        return "\n".join(sorted_content)
 
-        for assignment in dependent_assignments:
-            sorted_class_content.append(self._extract_node_with_leading_comments(assignment, source_code)[0])
-
-        return sorted_class_content
     
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
@@ -205,6 +208,20 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         tree = ast.parse(source_code)
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
+        
+        nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
+
+        class_definitions = [n for _, n in nodes_with_comments if isinstance(n, ast.ClassDef)]
+
+        # Reorder each class content
+        for class_node in class_definitions:
+            reordered_class_content = _sort_class_contents(class_node, source_code)
+            start_line = class_node.lineno - 1
+            end_line = getattr(class_node, "end_lineno", class_node.lineno)
+            source_code_lines = source_code.splitlines()
+            source_code_lines[start_line:end_line] = reordered_class_content.splitlines()
+
+        source_code = "\n".join(source_code_lines)
 
         # Dependency graph for class inheritance
         class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
