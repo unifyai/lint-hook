@@ -145,10 +145,10 @@ class FunctionOrderingFormatter(BaseFormatter):
         "# ---------------- #",
     ]
 
-    def _is_header_line(line: str) -> bool:
-        return line.strip() in HEADERS
 
     def _rearrange_class_members(self, class_node, source_code: str) -> List[str]:
+        def _is_header_line(line: str) -> bool:
+            return line.strip() in HEADERS
         nodes_with_comments = self._extract_all_nodes_with_comments(class_node, source_code)
 
         # Filter out existing headers
