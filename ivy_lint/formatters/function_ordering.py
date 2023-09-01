@@ -130,6 +130,7 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         return "\n".join(extracted_lines), node
 
+    @staticmethod
     def _extract_all_nodes_with_comments(
         self, tree: ast.AST, source_code: str
     ) -> List[Tuple[str, ast.AST]]:
