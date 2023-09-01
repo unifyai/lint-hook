@@ -138,26 +138,25 @@ class FunctionOrderingFormatter(BaseFormatter):
             for node in tree.body
         ]
         
-    def _rearrange_class_members(self, class_node, source_code: str) -> List[str]:
+    def _rearrange_class_members(self, class_node, source_code: str) -> list[str]:
         HEADERS = [
             "# Properties #",
             "# ---------- #",
             "# Instance Methods #",
             "# ---------------- #",
         ]
+        HEADER_PATTERN = r'^\s*#\s*[a-zA-Z\s]+\s*#\s*$'
+        
         def _is_header_line(line: str) -> bool:
             return line.strip() in HEADERS
-        nodes_with_comments = self._extract_all_nodes_with_comments(class_node, source_code)
 
-        # Filter out existing headers
+        nodes_with_comments = self._extract_all_nodes_with_comments(class_node, source_code)
         nodes_with_comments = [(code, node) for code, node in nodes_with_comments if not _is_header_line(code)]
 
-        # If the class only has a pass statement, return immediately
         if len(nodes_with_comments) == 1 and isinstance(nodes_with_comments[0][1], ast.Pass):
             class_definition = source_code.splitlines()[class_node.lineno - 1]
             return [class_definition, '    pass']
 
-        # Grouping nodes
         non_dependent_assignments = []
         properties = []
         instance_methods = []
@@ -195,15 +194,22 @@ class FunctionOrderingFormatter(BaseFormatter):
         instance_methods += dependent_assignments
         instance_methods.sort(key=lambda x: x[1].name if isinstance(x[1], ast.FunctionDef) else '')
 
-        sorted_nodes = non_dependent_assignments + [
-            ("# Properties #", None),
-            ("# ---------- #", None)
-        ] + properties + [
+        sorted_nodes = non_dependent_assignments
+
+        if properties:
+            sorted_nodes += [
+                ("# Properties #", None),
+                ("# ---------- #", None)
+            ] + properties
+
+        sorted_nodes += [
             ("# Instance Methods #", None),
             ("# ---------------- #", None)
-        ] + instance_methods
+        ] + instance_methods + dependent_assignments
 
-        # Adding the class definition on top
+        # Removing existing headers from the source code
+        source_code = re.sub(HEADER_PATTERN, '', source_code)
+
         class_definition = source_code.splitlines()[class_node.lineno - 1]
         return [class_definition] + [code for code, _ in sorted_nodes]
 
