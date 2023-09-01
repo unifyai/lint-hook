@@ -99,6 +99,28 @@ def _is_assignment_target_an_attribute(node):
                 return True
     return False
 
+def _get_class_node_sort_key(node):
+    # Check for assignments inside a class.
+    if isinstance(node, ast.Assign):
+        right_side_names = extract_names_from_assignment(node)
+        if any(name in right_side_names for name in class_function_names):
+            return (4, ast.dump(node))
+        else:
+            return (1, ast.dump(node))
+    
+    # Check for property functions inside a class.
+    if isinstance(node, ast.FunctionDef):
+        has_setter = any(d.attr == "setter" for d in node.decorator_list if isinstance(d, ast.Attribute))
+        has_getter = any(d.attr == "getter" for d in node.decorator_list if isinstance(d, ast.Attribute))
+        has_property = any(isinstance(d, ast.Name) and d.id == "property" for d in node.decorator_list)
+        if has_setter or has_getter or has_property:
+            return (2, node.name)
+        
+        # Any other function inside a class.
+        return (3, node.name)
+    
+    return (5, ast.dump(node))
+
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -295,6 +317,36 @@ class FunctionOrderingFormatter(BaseFormatter):
             else:
                 reordered_code_list.append(code)
                 prev_was_assignment = False
+                
+            for _, class_node in nodes_with_comments:
+                if isinstance(class_node, ast.ClassDef):
+                    class_contents = list(class_node.body)
+                    
+                    class_function_names = [
+                        node.name for node in class_contents if isinstance(node, ast.FunctionDef)
+                    ]
+                    
+                    # Sort the class contents using the helper function.
+                    class_node.body = sorted(
+                        class_contents,
+                        key=_get_class_node_sort_key
+                    )
+                    
+                    # Add headers for properties and instance methods.
+                    insert_positions = []
+                    prev_sort_key = None
+                    for idx, node in enumerate(class_node.body):
+                        sort_key = _get_class_node_sort_key(node)[0]
+                        if sort_key != prev_sort_key:
+                            if sort_key == 2:
+                                insert_positions.append((idx, "# Properties #\n# ---------- #\n"))
+                            elif sort_key == 3:
+                                insert_positions.append((idx, "# Instance Methods #\n# ---------------- #\n"))
+                        prev_sort_key = sort_key
+                    
+                    # Insert the headers at the right positions.
+                    for pos, header in reversed(insert_positions):
+                        class_node.body.insert(pos, ast.parse(header).body[0])
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
