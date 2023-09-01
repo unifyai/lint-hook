@@ -137,88 +137,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             self._extract_node_with_leading_comments(node, source_code)
             for node in tree.body
         ]
-        
-    def _rearrange_class_members(self, class_node, source_code: str) -> list[str]:
-        HEADERS = [
-            "# Properties #",
-            "# ---------- #",
-            "# Instance Methods #",
-            "# ---------------- #",
-        ]
-        HEADER_PATTERN = r'^\s*#\s*[a-zA-Z\s]+\s*#\s*$'
-        
-        def _is_header_line(line: str) -> bool:
-            return line.strip() in HEADERS
-
-        nodes_with_comments = self._extract_all_nodes_with_comments(class_node, source_code)
-        nodes_with_comments = [(code, node) for code, node in nodes_with_comments if not _is_header_line(code)]
-
-        if len(nodes_with_comments) == 1 and isinstance(nodes_with_comments[0][1], ast.Pass):
-            class_definition = source_code.splitlines()[class_node.lineno - 1]
-            return [class_definition, '    pass']
-
-        non_dependent_assignments = []
-        properties = []
-        instance_methods = []
-        dependent_assignments = []
-
-        for code, node in nodes_with_comments:
-            if isinstance(node, ast.Assign):
-                right_side_names = extract_names_from_assignment(node)
-                if any(
-                    name == target.id for target in node.targets for func, _ in nodes_with_comments
-                    if isinstance(func, ast.FunctionDef) and func.name == name
-                ):
-                    dependent_assignments.append((code, node))
-                else:
-                    non_dependent_assignments.append((code, node))
-            elif isinstance(node, ast.FunctionDef):
-                has_property_decorator = False
-                for decorator in node.decorator_list:
-                    if isinstance(decorator, ast.Attribute) and decorator.attr in ['setter', 'getter']:
-                        has_property_decorator = True
-                        break
-                    if isinstance(decorator, ast.Name) and decorator.id == 'property':
-                        has_property_decorator = True
-                        break
-                if has_property_decorator:
-                    properties.append((code, node))
-                else:
-                    instance_methods.append((code, node))
-
-        # Sorting nodes
-        properties.sort(key=lambda x: x[1].name)
-        instance_methods.sort(key=lambda x: x[1].name)
-
-        # Merge dependent assignments with instance_methods and sort them together
-        instance_methods += dependent_assignments
-        instance_methods.sort(key=lambda x: x[1].name if isinstance(x[1], ast.FunctionDef) else '')
-        
-        methods_and_dependencies = instance_methods + dependent_assignments
-        methods_and_dependencies.sort(key=lambda x: (
-            x[1].name if isinstance(x[1], ast.FunctionDef) else float('inf'),
-            x[0] 
-        ))
-
-        sorted_nodes = non_dependent_assignments
-
-        if properties:
-            sorted_nodes += [
-                ("# Properties #", None),
-                ("# ---------- #", None)
-            ] + properties
-
-        sorted_nodes += [
-            ("# Instance Methods #", None),
-            ("# ---------------- #", None)
-        ] + methods_and_dependencies
-
-        # Removing existing headers from the source code using regex
-        source_lines = source_code.splitlines()
-        source_lines = [line for line in source_lines if not re.match(HEADER_PATTERN, line)]
-
-        class_definition = source_lines[class_node.lineno - 1]
-        return [class_definition] + [code for code, _ in sorted_nodes]
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
@@ -343,10 +261,6 @@ class FunctionOrderingFormatter(BaseFormatter):
         last_function_type = None
 
         for code, node in nodes_sorted:
-            if isinstance(node, ast.ClassDef):
-                reordered_class_code = self._rearrange_class_members(node, source_code)
-                reordered_code_list.extend(reordered_class_code)
-                continue
             # If the docstring was added at the beginning, skip the node
             if (
                 docstring_added
