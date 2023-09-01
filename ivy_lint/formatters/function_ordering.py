@@ -147,7 +147,8 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(decorator, ast.Name) and decorator.id == "property":
                 return True
         return False
-
+    
+    @staticmethod
     def get_class_elements_ordering(node, nodes_with_comments):
         non_dependent_assignments = []
         properties = []
