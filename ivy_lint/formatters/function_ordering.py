@@ -99,27 +99,69 @@ def _is_assignment_target_an_attribute(node):
                 return True
     return False
 
-def _get_class_node_sort_key(node):
-    # Check for assignments inside a class.
-    if isinstance(node, ast.Assign):
-        right_side_names = extract_names_from_assignment(node)
-        if any(name in right_side_names for name in class_function_names):
-            return (4, ast.dump(node))
-        else:
-            return (1, ast.dump(node))
-    
-    # Check for property functions inside a class.
-    if isinstance(node, ast.FunctionDef):
-        has_setter = any(d.attr == "setter" for d in node.decorator_list if isinstance(d, ast.Attribute))
-        has_getter = any(d.attr == "getter" for d in node.decorator_list if isinstance(d, ast.Attribute))
-        has_property = any(isinstance(d, ast.Name) and d.id == "property" for d in node.decorator_list)
-        if has_setter or has_getter or has_property:
-            return (2, node.name)
-        
-        # Any other function inside a class.
-        return (3, node.name)
-    
-    return (5, ast.dump(node))
+
+def _sort_class_content(self, class_node: ast.ClassDef, source_code: str) -> List[str]:
+    setters = []
+    getters = []
+    properties = []
+    simple_assignments = []
+    dependent_assignments = []
+    other_functions = []
+
+    # Traverse through the class body and categorize functions and assignments
+    for item in class_node.body:
+        if isinstance(item, ast.FunctionDef):
+            decorators = [d.id if isinstance(d, ast.Name) else None for d in item.decorator_list]
+
+            if any(dec.endswith('.setter') for dec in decorators):
+                setters.append(item)
+            elif any(dec.endswith('.getter') for dec in decorators):
+                getters.append(item)
+            elif 'property' in decorators:
+                properties.append(item)
+            else:
+                other_functions.append(item)
+
+        elif isinstance(item, ast.Assign):
+            right_side_names = extract_names_from_assignment(item)
+
+            # Check if the assignment depends on any class function
+            if any(fn.name in right_side_names for fn in other_functions):
+                dependent_assignments.append(item)
+            else:
+                simple_assignments.append(item)
+
+    # Sort function definitions alphabetically
+    setters.sort(key=lambda x: x.name)
+    getters.sort(key=lambda x: x.name)
+    properties.sort(key=lambda x: x.name)
+    other_functions.sort(key=lambda x: x.name)
+
+    # Construct the class content in the specified order
+    sorted_class_content = []
+
+    for assignment in simple_assignments:
+        sorted_class_content.append(self._extract_node_with_leading_comments(assignment, source_code)[0])
+
+    if properties or setters or getters:
+        sorted_class_content.append("# Properties #\n# ---------- #")
+        for prop in properties:
+            sorted_class_content.append(self._extract_node_with_leading_comments(prop, source_code)[0])
+        for getter in getters:
+            sorted_class_content.append(self._extract_node_with_leading_comments(getter, source_code)[0])
+        for setter in setters:
+            sorted_class_content.append(self._extract_node_with_leading_comments(setter, source_code)[0])
+
+    if other_functions:
+        sorted_class_content.append("# Instance Methods #\n# ---------------- #")
+        for func in other_functions:
+            sorted_class_content.append(self._extract_node_with_leading_comments(func, source_code)[0])
+
+    for assignment in dependent_assignments:
+        sorted_class_content.append(self._extract_node_with_leading_comments(assignment, source_code)[0])
+
+    return sorted_class_content
+
 
 
 class FunctionOrderingFormatter(BaseFormatter):
@@ -318,35 +360,10 @@ class FunctionOrderingFormatter(BaseFormatter):
                 reordered_code_list.append(code)
                 prev_was_assignment = False
                 
-            for _, class_node in nodes_with_comments:
-                if isinstance(class_node, ast.ClassDef):
-                    class_contents = list(class_node.body)
-                    
-                    class_function_names = [
-                        node.name for node in class_contents if isinstance(node, ast.FunctionDef)
-                    ]
-                    
-                    # Sort the class contents using the helper function.
-                    class_node.body = sorted(
-                        class_contents,
-                        key=_get_class_node_sort_key
-                    )
-                    
-                    # Add headers for properties and instance methods.
-                    insert_positions = []
-                    prev_sort_key = None
-                    for idx, node in enumerate(class_node.body):
-                        sort_key = _get_class_node_sort_key(node)[0]
-                        if sort_key != prev_sort_key:
-                            if sort_key == 2:
-                                insert_positions.append((idx, "# Properties #\n# ---------- #\n"))
-                            elif sort_key == 3:
-                                insert_positions.append((idx, "# Instance Methods #\n# ---------------- #\n"))
-                        prev_sort_key = sort_key
-                    
-                    # Insert the headers at the right positions.
-                    for pos, header in reversed(insert_positions):
-                        class_node.body.insert(pos, ast.parse(header).body[0])
+            if isinstance(node, ast.ClassDef):
+                sorted_class_content = self._sort_class_content(node, source_code)
+                reordered_code_list.append('\n'.join(sorted_class_content))
+                continue
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
