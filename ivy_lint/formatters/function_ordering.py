@@ -71,72 +71,34 @@ def assignment_build_dependency_graph(nodes_with_comments):
                 if isinstance(target, ast.Name):
                     for name in right_side_names:
                         if graph.has_node(name):
-
                             graph.add_edge(name, target.id)
     return graph
+
 
 def has_st_composite_decorator(node: ast.FunctionDef) -> bool:
     return any(
         isinstance(decorator, ast.Attribute) and decorator.attr == "composite"
         for decorator in node.decorator_list
     )
-    
+
+
 def related_helper_function(assignment_name, nodes_with_comments):
     for _, node in nodes_with_comments:
         if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and hasattr(node, "name"):
-            if node.name.startswith("_") and contains_any_name(ast.dump(node), [assignment_name]):
+            if node.name.startswith("_") and contains_any_name(
+                ast.dump(node), [assignment_name]
+            ):
                 return node.name
     return None
 
-def classify_class_member(node: ast.AST) -> Tuple[int, str]:
+
+def _is_assignment_target_an_attribute(node):
     if isinstance(node, ast.Assign):
-        # Check if assignment is dependent on any function inside the class
-        right_side_names = extract_names_from_assignment(node)
-        for name in right_side_names:
-            if hasattr(node, "name") and name == node.name:
-                return (4, "")
-        return (1, "")
+        for target in node.targets:
+            if isinstance(target, ast.Attribute):
+                return True
+    return False
 
-    if isinstance(node, ast.FunctionDef):
-        for decorator in node.decorator_list:
-            if isinstance(decorator, ast.Attribute):
-                if (
-                    decorator.attr.endswith("setter")
-                    or decorator.attr.endswith("getter")
-                    or decorator.attr == "property"
-                ):
-                    property_name = decorator.value.id
-                    return (2, property_name)
-        return (3, node.name)
-
-    return (5, "")
-
-def _rearrange_class_members(class_node: ast.ClassDef) -> List[ast.AST]:
-    # Classify class members
-    classified_members = [
-        (classify_class_member(member), member) for member in class_node.body
-    ]
-
-    # Sort members by type, then by name for properties and instance methods
-    sorted_members = sorted(
-        classified_members, key=lambda x: (x[0][0], x[0][1])
-    )
-
-    # Rearrange members and inject headers
-    result = []
-    seen_properties = False
-    seen_instance_methods = False
-
-    for class_type, member in sorted_members:
-        if class_type[0] == 2 and not seen_properties:
-            result.append(ast.parse("# Properties #\n# ---------- #").body[0])
-            seen_properties = True
-        elif class_type[0] == 3 and not seen_instance_methods:
-            result.append(ast.parse("# Instance Methods #\n# ---------------- #").body[0])
-            seen_instance_methods = True
-        result.append(member)
-
-    return result
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -181,15 +143,6 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         tree = ast.parse(source_code)
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
-
-        # Rearrange class members
-        for i, (_, node) in enumerate(nodes_with_comments):
-            if isinstance(node, ast.ClassDef):
-                reordered_class_members = _rearrange_class_members(node)
-                class_as_source = "\n".join(
-                    ast.get_source_segment(source_code, m) for m in reordered_class_members
-                )
-                nodes_with_comments[i] = (class_as_source, node)
 
         # Dependency graph for class inheritance
         class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
@@ -245,15 +198,23 @@ class FunctionOrderingFormatter(BaseFormatter):
             if isinstance(node, ast.Assign):
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
                 target_str = ",".join(targets)
-                
-                related_function = related_helper_function(target_str, nodes_with_comments)
+
+                related_function = related_helper_function(
+                    target_str, nodes_with_comments
+                )
                 if related_function:
                     function_position = [
-                        i for i, (_, n) in enumerate(nodes_with_comments) 
-                        if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and hasattr(n, "name") and n.name == related_function
+                        i
+                        for i, (_, n) in enumerate(nodes_with_comments)
+                        if isinstance(n, (ast.FunctionDef, ast.ClassDef))
+                        and hasattr(n, "name")
+                        and n.name == related_function
                     ][0]
                     return (6, function_position, target_str)
-                
+
+                if _is_assignment_target_an_attribute(node):
+                    return (5.5, 0, target_str)
+
                 if _is_assignment_dependent_on_assignment(node):
                     return (7, 0, target_str)
                 elif _is_assignment_dependent_on_function_or_class(node):
