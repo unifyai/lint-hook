@@ -15,60 +15,48 @@ FILE_PATTERN = re.compile(
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
-def categorize_and_sort_class_content(node, nodes_with_comments):
-    independent_assignments = []
-    dependent_assignments = []
-    properties = []
-    instance_methods = []
+def extract_property_name(decorator) -> str:
+    if isinstance(decorator, ast.Attribute):
+        return decorator.value.id
+    return None
 
-    for _, child_node in nodes_with_comments:
-        if isinstance(child_node, ast.FunctionDef):
-            # check for @property, @<name>.getter, @<name>.setter decorators
-            if any(
-                isinstance(dec, ast.Name) and dec.id == 'property'
-                for dec in child_node.decorator_list
-            ):
-                properties.append(child_node)
-            elif any(
-                isinstance(dec, ast.Attribute) and dec.attr in ('getter', 'setter')
-                for dec in child_node.decorator_list
-            ):
-                properties.append(child_node)
-            else:
-                instance_methods.append(child_node)
-        
-        elif isinstance(child_node, ast.Assign):
-            # Check if assignment depends on other functions inside the class
-            names_in_class = [n.name for n in node.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
-            if contains_any_name(ast.dump(child_node), names_in_class):
-                dependent_assignments.append(child_node)
-            else:
-                independent_assignments.append(child_node)
+def sort_class_methods(node: ast.ClassDef, source_code: str) -> List[str]:
+    methods = []
+    setters_getters = []
+    other_functions = []
+    assignments_no_depends = []
+    assignments_depends = []
 
-    properties = sorted(properties, key=lambda x: x.name)
-    instance_methods = sorted(instance_methods, key=lambda x: x.name)
-
-    return independent_assignments + properties + instance_methods + dependent_assignments
-
-
-def reconstruct_class_with_sorted_content(node, sorted_content):
-    reconstructed = [f"class {node.name}:"]
-    if node.bases:
-        bases = ", ".join(base.id for base in node.bases)
-        reconstructed[0] += f"({bases})"
-    
-    for item in sorted_content:
+    for item in node.body:
+        code, _ = extract_node_with_leading_comments(item, source_code)
         if isinstance(item, ast.FunctionDef):
-            if item in properties:
-                reconstructed.append("# Properties #\n# ---------- #")
+            if any(map(lambda d: isinstance(d, (ast.Attribute, ast.Name)), item.decorator_list)):
+                prop_name = next((extract_property_name(decorator) for decorator in item.decorator_list), None)
+                if prop_name and (prop_name + ".setter" in ast.dump(item) or prop_name + ".getter" in ast.dump(item) or "property" in ast.dump(item)):
+                    setters_getters.append((item.name, code))
+                else:
+                    other_functions.append((item.name, code))
             else:
-                reconstructed.append("# Instance Methods #\n# ---------------- #")
-            reconstructed.extend(ast.get_source_segment(source_code, item).split('\n'))
+                other_functions.append((item.name, code))
         elif isinstance(item, ast.Assign):
-            reconstructed.extend(ast.get_source_segment(source_code, item).split('\n'))
+            # For simplicity, let's say if assignment uses any function call, it depends on other functions
+            if any(isinstance(child, ast.Call) for child in ast.walk(item)):
+                assignments_depends.append(code)
+            else:
+                assignments_no_depends.append(code)
 
-    return "\n    ".join(reconstructed)
+    # Sorting alphabetically for methods
+    setters_getters = [code for _, code in sorted(setters_getters, key=lambda x: x[0])]
+    other_functions = [code for _, code in sorted(other_functions, key=lambda x: x[0])]
 
+    # Construct the sorted class methods
+    class_methods_sorted = assignments_no_depends
+    if setters_getters:
+        class_methods_sorted += ["\n# Properties #", "# ---------- #"] + setters_getters
+    if other_functions:
+        class_methods_sorted += ["\n# Instance Methods #", "# ---------------- #"] + other_functions
+    class_methods_sorted += assignments_depends
+    return class_methods_sorted
 
 def class_build_dependency_graph(nodes_with_comments):
     graph = nx.DiGraph()
@@ -197,15 +185,6 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         tree = ast.parse(source_code)
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
-        
-        reordered_code_list = []
-
-        # Loop through nodes to identify classes
-        for code, node in nodes_with_comments:
-            if isinstance(node, ast.ClassDef):
-                sorted_class_content = categorize_and_sort_class_content(node, nodes_with_comments)
-                reordered_class = reconstruct_class_with_sorted_content(node, sorted_class_content)
-                reordered_code_list.append(reordered_class)
 
         # Dependency graph for class inheritance
         class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
@@ -332,32 +311,37 @@ class FunctionOrderingFormatter(BaseFormatter):
             ):
                 continue
 
-            current_function_type = None
-            if isinstance(node, ast.FunctionDef):
-                if node.name.startswith("_") or has_st_composite_decorator(node):
-                    current_function_type = "helper"
-                    if last_function_type != "helper":
-                        reordered_code_list.append(
-                            "\n\n# --- Helpers --- #\n# --------------- #"
-                        )
-                else:
-                    current_function_type = "api"
-                    if last_function_type != "api" and has_helper_functions:
-                        reordered_code_list.append(
-                            "\n\n# --- Main --- #\n# ------------ #"
-                        )
 
-            last_function_type = current_function_type or last_function_type
+            if isinstance(node, ast.ClassDef):
+                class_methods_sorted = self.sort_class_methods(node, code)  # Assuming you have the method `sort_class_methods` defined
+                reordered_code_list.extend(class_methods_sorted)
+            else:
+                current_function_type = None
+                if isinstance(node, ast.FunctionDef):
+                    if node.name.startswith("_") or has_st_composite_decorator(node):
+                        current_function_type = "helper"
+                        if last_function_type != "helper":
+                            reordered_code_list.append(
+                                "\n\n# --- Helpers --- #\n# --------------- #"
+                            )
+                    else:
+                        current_function_type = "api"
+                        if last_function_type != "api" and has_helper_functions:
+                            reordered_code_list.append(
+                                "\n\n# --- Main --- #\n# ------------ #"
+                            )
 
-            if isinstance(node, ast.Assign):
-                if prev_was_assignment:
-                    reordered_code_list.append(code.strip())
+                last_function_type = current_function_type or last_function_type
+
+                if isinstance(node, ast.Assign):
+                    if prev_was_assignment:
+                        reordered_code_list.append(code.strip())
+                    else:
+                        reordered_code_list.append(code)
+                    prev_was_assignment = True
                 else:
                     reordered_code_list.append(code)
-                prev_was_assignment = True
-            else:
-                reordered_code_list.append(code)
-                prev_was_assignment = False
+                    prev_was_assignment = False
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
