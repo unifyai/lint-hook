@@ -101,69 +101,6 @@ def _is_assignment_target_an_attribute(node):
 
 
 class FunctionOrderingFormatter(BaseFormatter):
-    def _sort_class_content(self, class_node: ast.ClassDef, source_code: str) -> List[str]:
-        setters = []
-        getters = []
-        properties = []
-        simple_assignments = []
-        dependent_assignments = []
-        other_functions = []
-
-        # Traverse through the class body and categorize functions and assignments
-        for item in class_node.body:
-            if isinstance(item, ast.FunctionDef):
-                decorators = [d.id if isinstance(d, ast.Name) else None for d in item.decorator_list]
-
-                if any(dec.endswith('.setter') for dec in decorators):
-                    setters.append(item)
-                elif any(dec.endswith('.getter') for dec in decorators):
-                    getters.append(item)
-                elif 'property' in decorators:
-                    properties.append(item)
-                else:
-                    other_functions.append(item)
-
-            elif isinstance(item, ast.Assign):
-                right_side_names = extract_names_from_assignment(item)
-
-                # Check if the assignment depends on any class function
-                if any(fn.name in right_side_names for fn in other_functions):
-                    dependent_assignments.append(item)
-                else:
-                    simple_assignments.append(item)
-
-        # Sort function definitions alphabetically
-        setters.sort(key=lambda x: x.name)
-        getters.sort(key=lambda x: x.name)
-        properties.sort(key=lambda x: x.name)
-        other_functions.sort(key=lambda x: x.name)
-
-        # Construct the class content in the specified order
-        sorted_class_content = []
-
-        for assignment in simple_assignments:
-            sorted_class_content.append(self._extract_node_with_leading_comments(assignment, source_code)[0])
-
-        if properties or setters or getters:
-            sorted_class_content.append("# Properties #\n# ---------- #")
-            for prop in properties:
-                sorted_class_content.append(self._extract_node_with_leading_comments(prop, source_code)[0])
-            for getter in getters:
-                sorted_class_content.append(self._extract_node_with_leading_comments(getter, source_code)[0])
-            for setter in setters:
-                sorted_class_content.append(self._extract_node_with_leading_comments(setter, source_code)[0])
-
-        if other_functions:
-            sorted_class_content.append("# Instance Methods #\n# ---------------- #")
-            for func in other_functions:
-                sorted_class_content.append(self._extract_node_with_leading_comments(func, source_code)[0])
-
-        for assignment in dependent_assignments:
-            sorted_class_content.append(self._extract_node_with_leading_comments(assignment, source_code)[0])
-
-        included_function_names = {f.name for f in other_functions}
-        return sorted_class_content, included_function_names
-    
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
@@ -323,8 +260,6 @@ class FunctionOrderingFormatter(BaseFormatter):
         prev_was_assignment = False
         last_function_type = None
 
-        included_functions = set()
-        
         for code, node in nodes_sorted:
             # If the docstring was added at the beginning, skip the node
             if (
@@ -360,17 +295,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             else:
                 reordered_code_list.append(code)
                 prev_was_assignment = False
-                
-            if isinstance(node, ast.ClassDef):
-                sorted_class_content, included_func_names = self._sort_class_content(node, source_code)
-                included_functions.update(included_func_names)
-                reordered_code_list.append('\n'.join(sorted_class_content))
-                continue
-
-            # Skip over functions that were included as part of the class content
-            if isinstance(node, ast.FunctionDef) and node.name in included_functions:
-                continue
-
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
