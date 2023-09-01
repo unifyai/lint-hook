@@ -101,39 +101,6 @@ def _is_assignment_target_an_attribute(node):
 
 
 class FunctionOrderingFormatter(BaseFormatter):
-    def _reorder_class_body(self, class_node: ast.ClassDef) -> List[ast.AST]:
-        class_body = class_node.body
-
-        # Separate assignments, properties, and other functions
-        assignments = []
-        properties = []
-        functions = []
-        dependent_assignments = []
-
-        for member in class_body:
-            if isinstance(member, ast.Assign):
-                # For now, let's separate all assignments; we'll deal with dependencies later.
-                assignments.append(member)
-            elif isinstance(member, ast.FunctionDef):
-                if any(isinstance(dec, ast.Attribute) and dec.attr in ['setter', 'getter'] for dec in member.decorator_list):
-                    properties.append(member)
-                else:
-                    functions.append(member)
-
-        # Now we handle the sorting:
-        properties = sorted(properties, key=lambda x: x.name)
-        functions = sorted(functions, key=lambda x: x.name)
-
-        reordered_class_body = []
-
-        reordered_class_body.extend(assignments)  # Add assignments first
-        reordered_class_body.extend(properties)
-        reordered_class_body.extend(functions)
-        reordered_class_body.extend(dependent_assignments)  # Add dependent assignments last
-
-        return reordered_class_body
-
-
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
@@ -170,6 +137,47 @@ class FunctionOrderingFormatter(BaseFormatter):
             self._extract_node_with_leading_comments(node, source_code)
             for node in tree.body
         ]
+        
+    def is_property_related_decorator(node):
+        if not hasattr(node, "decorator_list"):
+            return False
+        for decorator in node.decorator_list:
+            if isinstance(decorator, ast.Attribute) and decorator.attr in ["setter", "getter"]:
+                return True
+            if isinstance(decorator, ast.Name) and decorator.id == "property":
+                return True
+        return False
+
+    def get_class_elements_ordering(node, nodes_with_comments):
+        non_dependent_assignments = []
+        properties = []
+        other_functions = []
+        dependent_assignments = []
+
+        if not isinstance(node, ast.ClassDef):
+            return []
+
+        function_names = [
+            n.name for _, n in nodes_with_comments if isinstance(n, ast.FunctionDef)
+        ]
+        
+        for _, inner_node in nodes_with_comments:
+            if isinstance(inner_node, ast.FunctionDef) and is_property_related_decorator(inner_node):
+                properties.append(inner_node)
+            elif isinstance(inner_node, ast.FunctionDef):
+                other_functions.append(inner_node)
+            elif isinstance(inner_node, ast.Assign):
+                right_side_names = extract_names_from_assignment(inner_node)
+                if any(name in right_side_names for name in function_names):
+                    dependent_assignments.append(inner_node)
+                else:
+                    non_dependent_assignments.append(inner_node)
+        
+        # Sort function alphabetically
+        properties = sorted(properties, key=lambda x: x.name)
+        other_functions = sorted(other_functions, key=lambda x: x.name)
+
+        return non_dependent_assignments + properties + other_functions + dependent_assignments
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
@@ -256,13 +264,13 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (1, 0, target_str)
 
             if isinstance(node, ast.ClassDef):
-                reordered_nodes = self._reorder_class_body(node)
-                nodes_with_comments.extend(
-                    (reordered_node, self._extract_node_with_leading_comments(reordered_node, source_code)[1])
-                    for reordered_node in reordered_nodes
-                )
+                inner_order = get_class_elements_ordering(node, nodes_with_comments)
+                inner_order_index = lambda n: inner_order.index(n) if n in inner_order else len(inner_order)
 
-
+                try:
+                    return (2, sorted_classes.index(node.name), node.name, inner_order_index(node))
+                except ValueError:
+                    return (2, len(sorted_classes), node.name, inner_order_index(node))
 
             if isinstance(node, ast.FunctionDef):
                 if node.name.startswith("_") or has_st_composite_decorator(node):
