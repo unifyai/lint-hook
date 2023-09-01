@@ -161,7 +161,8 @@ class FunctionOrderingFormatter(BaseFormatter):
         for assignment in dependent_assignments:
             sorted_class_content.append(self._extract_node_with_leading_comments(assignment, source_code)[0])
 
-        return sorted_class_content
+        included_function_names = {f.name for f in other_functions}
+        return sorted_class_content, included_function_names
     
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
@@ -359,9 +360,15 @@ class FunctionOrderingFormatter(BaseFormatter):
                 prev_was_assignment = False
                 
             if isinstance(node, ast.ClassDef):
-                sorted_class_content = self._sort_class_content(node, source_code)
+                sorted_class_content, included_func_names = self._sort_class_content(node, source_code)
+                included_functions.update(included_func_names)
                 reordered_code_list.append('\n'.join(sorted_class_content))
                 continue
+
+            # Skip over functions that were included as part of the class content
+            if isinstance(node, ast.FunctionDef) and node.name in included_functions:
+                continue
+
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
