@@ -137,17 +137,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             self._extract_node_with_leading_comments(node, source_code)
             for node in tree.body
         ]
-        
-    def is_property_related_decorator(node):
-        if not hasattr(node, "decorator_list"):
-            return False
-        for decorator in node.decorator_list:
-            if isinstance(decorator, ast.Attribute) and decorator.attr in ["setter", "getter"]:
-                return True
-            if isinstance(decorator, ast.Name) and decorator.id == "property":
-                return True
-        return False
-    
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
@@ -195,6 +184,16 @@ class FunctionOrderingFormatter(BaseFormatter):
             return False
 
         def sort_key(item):
+            def is_property_related_decorator(node):
+                if not hasattr(node, "decorator_list"):
+                    return False
+                for decorator in node.decorator_list:
+                    if isinstance(decorator, ast.Attribute) and decorator.attr in ["setter", "getter"]:
+                        return True
+                    if isinstance(decorator, ast.Name) and decorator.id == "property":
+                        return True
+                return False
+    
             def get_class_elements_ordering(node, nodes_with_comments):
                 non_dependent_assignments = []
                 properties = []
