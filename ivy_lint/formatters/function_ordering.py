@@ -232,73 +232,28 @@ class FunctionOrderingFormatter(BaseFormatter):
                 if node.name.startswith("_") or has_st_composite_decorator(node):
                     return (4, 0, node.name)
                 else:
-                    return (5, 0, node.name)
+                    # Modify the sorting logic for functions within a class
+                    if hasattr(node, "class_name"):
+                        class_node = node.class_name
+                        class_dependencies = set(
+                            nx.descendants(class_dependency_graph, class_node)
+                        )
+                        if _is_assignment_dependent_on_function_or_class(node):
+                            return (6, 0, node.name)
+                        elif (
+                            _is_assignment_target_an_attribute(node)
+                            and any(
+                                dep in class_dependencies
+                                for dep in extract_names_from_assignment(node)
+                            )
+                        ):
+                            return (7, 0, node.name)
+                        else:
+                            return (5, 0, node.name)
 
             return (8, 0, getattr(node, "name", ""))
 
-        def class_functions_sort_key(item):
-            _, node = item
-            
-            if isinstance(node, ast.Assign):
-                right_side_names = extract_names_from_assignment(node)
-                if any(name in right_side_names for name in [n.name for _, n in nodes_with_comments if isinstance(n, ast.FunctionDef)]):
-                    return (4, 0, getattr(node, 'name', ''))
-                else:
-                    return (1, 0, getattr(node, 'name', ''))
-
-            if isinstance(node, ast.FunctionDef):
-                for decorator in node.decorator_list:
-                    if isinstance(decorator, ast.Attribute) and decorator.attr in ['setter', 'getter']:
-                        return (2, 0, node.name)
-                    if isinstance(decorator, ast.Name) and decorator.id == 'property':
-                        return (2, 1, node.name)
-                return (3, 0, node.name)
-
-            return (5, 0, getattr(node, 'name', ''))
-
-        # Split nodes into classes and others
-        class_nodes_with_comments = [
-            (code, node) for code, node in nodes_with_comments if isinstance(node, ast.ClassDef)
-        ]
-        non_class_nodes_with_comments = [
-            (code, node) for code, node in nodes_with_comments if not isinstance(node, ast.ClassDef)
-        ]
-
-        # For each class, sort its functions and assignments
-        sorted_class_nodes_with_comments = []
-        for code, class_node in class_nodes_with_comments:
-            class_content_with_comments = self._extract_all_nodes_with_comments(class_node, code)
-            sorted_class_content = sorted(class_content_with_comments, key=class_functions_sort_key)
-            
-            # Insert headers for Properties and Instance Methods
-            properties_header_inserted = False
-            instance_methods_header_inserted = False
-
-            sorted_class_content_with_headers = []
-            for item_code, item_node in sorted_class_content:
-                if not properties_header_inserted and isinstance(item_node, ast.FunctionDef):
-                    for decorator in item_node.decorator_list:
-                        if isinstance(decorator, ast.Attribute) and decorator.attr in ['setter', 'getter']:
-                            sorted_class_content_with_headers.append("# Properties #\n# ---------- #")
-                            properties_header_inserted = True
-                            break
-                        if isinstance(decorator, ast.Name) and decorator.id == 'property':
-                            sorted_class_content_with_headers.append("# Properties #\n# ---------- #")
-                            properties_header_inserted = True
-                            break
-                            
-                if not instance_methods_header_inserted and isinstance(item_node, ast.FunctionDef):
-                    sorted_class_content_with_headers.append("# Instance Methods #\n# ---------------- #")
-                    instance_methods_header_inserted = True
-
-                sorted_class_content_with_headers.append(item_code)
-
-            # Combine sorted content back to class code
-            sorted_class_code = f'class {class_node.name}:\n' + "\n".join(sorted_class_content_with_headers).replace('\n', '\n    ')
-            sorted_class_nodes_with_comments.append((sorted_class_code, class_node))
-
-        nodes_sorted = sorted(non_class_nodes_with_comments, key=sort_key) + sorted_class_nodes_with_comments
-
+        nodes_sorted = sorted(nodes_with_comments, key=sort_key)
         reordered_code_list = []
 
         # Check and add module-level docstring
