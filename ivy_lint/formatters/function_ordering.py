@@ -143,6 +143,7 @@ class FunctionOrderingFormatter(BaseFormatter):
             return decorator.value.id
         return None
 
+    @staticmethod
     def sort_class_members(nodes_with_comments):
         class_member_order = {
             "independent_assignments": [],
@@ -333,7 +334,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                 prev_was_assignment = False
                 
             if isinstance(node, ast.ClassDef):
-                class_member_order = sort_class_members(nodes_with_comments)
+                class_member_order = FunctionOrderingFormatter.sort_class_members(nodes_with_comments)
                 
                 # Append the independent assignments
                 for assign_node in class_member_order["independent_assignments"]:
