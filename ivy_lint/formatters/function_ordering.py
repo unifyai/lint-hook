@@ -193,6 +193,12 @@ class FunctionOrderingFormatter(BaseFormatter):
         # Merge dependent assignments with instance_methods and sort them together
         instance_methods += dependent_assignments
         instance_methods.sort(key=lambda x: x[1].name if isinstance(x[1], ast.FunctionDef) else '')
+        
+        methods_and_dependencies = instance_methods + dependent_assignments
+        methods_and_dependencies.sort(key=lambda x: (
+            x[1].name if isinstance(x[1], ast.FunctionDef) else float('inf'),
+            x[0] 
+        ))
 
         sorted_nodes = non_dependent_assignments
 
@@ -205,12 +211,13 @@ class FunctionOrderingFormatter(BaseFormatter):
         sorted_nodes += [
             ("# Instance Methods #", None),
             ("# ---------------- #", None)
-        ] + instance_methods + dependent_assignments
+        ] + methods_and_dependencies
 
-        # Removing existing headers from the source code
-        source_code = re.sub(HEADER_PATTERN, '', source_code)
+        # Removing existing headers from the source code using regex
+        source_lines = source_code.splitlines()
+        source_lines = [line for line in source_lines if not re.match(HEADER_PATTERN, line)]
 
-        class_definition = source_code.splitlines()[class_node.lineno - 1]
+        class_definition = source_lines[class_node.lineno - 1]
         return [class_definition] + [code for code, _ in sorted_nodes]
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
