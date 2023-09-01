@@ -15,6 +15,7 @@ FILE_PATTERN = re.compile(
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
+
 def class_build_dependency_graph(nodes_with_comments):
     graph = nx.DiGraph()
     for _, node in nodes_with_comments:
@@ -100,50 +101,6 @@ def _is_assignment_target_an_attribute(node):
 
 
 class FunctionOrderingFormatter(BaseFormatter):
-    
-    def extract_property_name(decorator) -> str:
-        if isinstance(decorator, ast.Attribute):
-            return decorator.value.id
-        return None
-
-    def sort_class_methods(node: ast.ClassDef, source_code: str) -> List[str]:
-        methods = []
-        setters_getters = []
-        other_functions = []
-        assignments_no_depends = []
-        assignments_depends = []
-
-        for item in node.body:
-            code, _ = extract_node_with_leading_comments(item, source_code)
-            if isinstance(item, ast.FunctionDef):
-                if any(map(lambda d: isinstance(d, (ast.Attribute, ast.Name)), item.decorator_list)):
-                    prop_name = next((extract_property_name(decorator) for decorator in item.decorator_list), None)
-                    if prop_name and (prop_name + ".setter" in ast.dump(item) or prop_name + ".getter" in ast.dump(item) or "property" in ast.dump(item)):
-                        setters_getters.append((item.name, code))
-                    else:
-                        other_functions.append((item.name, code))
-                else:
-                    other_functions.append((item.name, code))
-            elif isinstance(item, ast.Assign):
-                # For simplicity, let's say if assignment uses any function call, it depends on other functions
-                if any(isinstance(child, ast.Call) for child in ast.walk(item)):
-                    assignments_depends.append(code)
-                else:
-                    assignments_no_depends.append(code)
-
-        # Sorting alphabetically for methods
-        setters_getters = [code for _, code in sorted(setters_getters, key=lambda x: x[0])]
-        other_functions = [code for _, code in sorted(other_functions, key=lambda x: x[0])]
-
-        # Construct the sorted class methods
-        class_methods_sorted = assignments_no_depends
-        if setters_getters:
-            class_methods_sorted += ["\n# Properties #", "# ---------- #"] + setters_getters
-        if other_functions:
-            class_methods_sorted += ["\n# Instance Methods #", "# ---------------- #"] + other_functions
-        class_methods_sorted += assignments_depends
-        return class_methods_sorted
-    
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
@@ -181,11 +138,61 @@ class FunctionOrderingFormatter(BaseFormatter):
             for node in tree.body
         ]
 
+    def sort_nodes_within_class(self, class_node, source_code: str) -> List[str]:
+        nodes_with_comments = self._extract_all_nodes_with_comments(class_node, source_code)
+
+        def node_sort_key(item):
+            _, node = item
+
+            if isinstance(node, ast.Assign):
+                # Determine if this assignment depends on any function in this class.
+                right_side_names = extract_names_from_assignment(node)
+                function_names = [
+                    n.name for _, n in nodes_with_comments if isinstance(n, ast.FunctionDef)
+                ]
+                if any(name in right_side_names for name in function_names):
+                    return (4, 0, getattr(node, "name", ""))
+                else:
+                    return (1, 0, getattr(node, "name", ""))
+
+            if isinstance(node, ast.FunctionDef):
+                decorators = {decorator.attr for decorator in node.decorator_list if isinstance(decorator, ast.Attribute)}
+                if "setter" in decorators or "getter" in decorators or any(dec.attr == "property" for dec in node.decorator_list):
+                    return (2, 0, node.name)
+
+                return (3, 0, node.name)
+
+            return (5, 0, getattr(node, "name", ""))
+
+        nodes_sorted = sorted(nodes_with_comments, key=node_sort_key)
+
+        reordered_class_list = [f"class {class_node.name}:"]
+        prev_was_assignment = False
+
+        for code, node in nodes_sorted:
+            if isinstance(node, ast.Assign):
+                if prev_was_assignment:
+                    reordered_class_list.append('    ' + code.strip())
+                else:
+                    reordered_class_list.append('    ' + code)
+                prev_was_assignment = True
+            else:
+                if isinstance(node, ast.FunctionDef) and "setter" in {decorator.attr for decorator in node.decorator_list if isinstance(decorator, ast.Attribute)}:
+                    reordered_class_list.append("\n    # Properties #\n    # ---------- #")
+                elif isinstance(node, ast.FunctionDef):
+                    reordered_class_list.append("\n    # Instance Methods #\n    # ---------------- #")
+                reordered_class_list.append('    ' + code)
+                prev_was_assignment = False
+
+        return reordered_class_list
+    
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
 
         tree = ast.parse(source_code)
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
+        
+        reordered_code_list = []
 
         # Dependency graph for class inheritance
         class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
@@ -304,6 +311,10 @@ class FunctionOrderingFormatter(BaseFormatter):
         last_function_type = None
 
         for code, node in nodes_sorted:
+            if isinstance(node, ast.ClassDef):
+                reordered_class_code = self.sort_nodes_within_class(node, source_code)
+                reordered_code_list.extend(reordered_class_code)
+                continue
             # If the docstring was added at the beginning, skip the node
             if (
                 docstring_added
@@ -312,37 +323,32 @@ class FunctionOrderingFormatter(BaseFormatter):
             ):
                 continue
 
+            current_function_type = None
+            if isinstance(node, ast.FunctionDef):
+                if node.name.startswith("_") or has_st_composite_decorator(node):
+                    current_function_type = "helper"
+                    if last_function_type != "helper":
+                        reordered_code_list.append(
+                            "\n\n# --- Helpers --- #\n# --------------- #"
+                        )
+                else:
+                    current_function_type = "api"
+                    if last_function_type != "api" and has_helper_functions:
+                        reordered_code_list.append(
+                            "\n\n# --- Main --- #\n# ------------ #"
+                        )
 
-            if isinstance(node, ast.ClassDef):
-                class_methods_sorted = self.sort_class_methods(node, code)  # Assuming you have the method `sort_class_methods` defined
-                reordered_code_list.extend(class_methods_sorted)
-            else:
-                current_function_type = None
-                if isinstance(node, ast.FunctionDef):
-                    if node.name.startswith("_") or has_st_composite_decorator(node):
-                        current_function_type = "helper"
-                        if last_function_type != "helper":
-                            reordered_code_list.append(
-                                "\n\n# --- Helpers --- #\n# --------------- #"
-                            )
-                    else:
-                        current_function_type = "api"
-                        if last_function_type != "api" and has_helper_functions:
-                            reordered_code_list.append(
-                                "\n\n# --- Main --- #\n# ------------ #"
-                            )
+            last_function_type = current_function_type or last_function_type
 
-                last_function_type = current_function_type or last_function_type
-
-                if isinstance(node, ast.Assign):
-                    if prev_was_assignment:
-                        reordered_code_list.append(code.strip())
-                    else:
-                        reordered_code_list.append(code)
-                    prev_was_assignment = True
+            if isinstance(node, ast.Assign):
+                if prev_was_assignment:
+                    reordered_code_list.append(code.strip())
                 else:
                     reordered_code_list.append(code)
-                    prev_was_assignment = False
+                prev_was_assignment = True
+            else:
+                reordered_code_list.append(code)
+                prev_was_assignment = False
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
