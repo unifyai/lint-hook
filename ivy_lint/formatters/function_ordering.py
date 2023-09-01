@@ -219,7 +219,10 @@ class FunctionOrderingFormatter(BaseFormatter):
             rearranged_class_content, rearranged_class_node = _rearrange_methods_and_assignments_within_class(
                 class_code, class_node, nodes_with_comments
             )
-            source_code = source_code.replace(class_code, rearranged_class_content)
+            class_header = f"class {class_node.name}:"
+            full_class_code = f"{class_header}\n{rearranged_class_content}"
+            source_code = source_code.replace(class_code, full_class_code)
+
             
             # Update nodes_with_comments to reflect the changes
             index_of_class_node = next(i for i, (_, n) in enumerate(nodes_with_comments) if n == class_node)
@@ -269,13 +272,10 @@ class FunctionOrderingFormatter(BaseFormatter):
 
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 return (0, 0, getattr(node, "name", ""))
-
-            # Handle the try-except blocks containing imports.
             if isinstance(node, ast.Try):
                 for n in node.body:
                     if isinstance(n, (ast.Import, ast.ImportFrom)):
                         return (0, 1, getattr(n, "name", ""))
-
             if isinstance(node, ast.Assign):
                 targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
                 target_str = ",".join(targets)
@@ -319,8 +319,6 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
         reordered_code_list = []
-
-        # Check and add module-level docstring
         docstring_added = False
         if (
             isinstance(tree, ast.Module)
@@ -332,15 +330,12 @@ class FunctionOrderingFormatter(BaseFormatter):
             if docstring:
                 reordered_code_list.append(f'"""{docstring}"""')
                 docstring_added = True
-
         has_helper_functions = any(
             isinstance(node, ast.FunctionDef) and node.name.startswith("_")
             for _, node in nodes_sorted
         )
-
         prev_was_assignment = False
         last_function_type = None
-
         for code, node in nodes_sorted:
             # If the docstring was added at the beginning, skip the node
             if (
@@ -349,7 +344,6 @@ class FunctionOrderingFormatter(BaseFormatter):
                 and isinstance(node.value, ast.Str)
             ):
                 continue
-
             current_function_type = None
             if isinstance(node, ast.FunctionDef):
                 if node.name.startswith("_") or has_st_composite_decorator(node):
@@ -364,9 +358,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                         reordered_code_list.append(
                             "\n\n# --- Main --- #\n# ------------ #"
                         )
-
             last_function_type = current_function_type or last_function_type
-
             if isinstance(node, ast.Assign):
                 if prev_was_assignment:
                     reordered_code_list.append(code.strip())
@@ -382,7 +374,6 @@ class FunctionOrderingFormatter(BaseFormatter):
             reordered_code += "\n"
 
         return reordered_code
-
     def _format_file(self, filename: str) -> bool:
         if FILE_PATTERN.match(filename) is None:
             return False
@@ -398,7 +389,6 @@ class FunctionOrderingFormatter(BaseFormatter):
 
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(reordered_code)
-
         except SyntaxError:
             print(
                 f"Error: The provided file '{filename}' does not contain valid Python"
