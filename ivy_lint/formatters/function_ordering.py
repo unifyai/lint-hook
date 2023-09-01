@@ -151,13 +151,16 @@ def _rearrange_methods_and_assignments_within_class(class_code, class_node, node
         current_category = _class_node_sort_key(node, nodes_with_comments)[0]
         if current_category != last_category:
             if current_category == 2:
-                reordered_code_list.append("# Properties #\n# ---------- #")
+                reordered_code_list.append("\n# Properties #\n# ---------- #\n")
             elif current_category == 3:
-                reordered_code_list.append("# Instance Methods #\n# ---------------- #")
+                reordered_code_list.append("\n# Instance Methods #\n# ---------------- #\n")
         reordered_code_list.append(code)
         last_category = current_category
 
-    return "\n".join(reordered_code_list)
+    # We return the rearranged class node and the corresponding code
+    class_node.body = [item[1] for item in class_body_sorted]
+    class_code = "\n".join(reordered_code_list).strip() + "\n"
+    return class_code, class_node
 
 
 class FunctionOrderingFormatter(BaseFormatter):
@@ -213,8 +216,18 @@ class FunctionOrderingFormatter(BaseFormatter):
             (code, node) for code, node in nodes_with_comments if isinstance(node, ast.ClassDef)
         ]
         for class_code, class_node in class_nodes:
-            rearranged_class_content = _rearrange_methods_and_assignments_within_class(class_code, class_node, nodes_with_comments)
+            rearranged_class_content, rearranged_class_node = _rearrange_methods_and_assignments_within_class(
+                class_code, class_node, nodes_with_comments
+            )
             source_code = source_code.replace(class_code, rearranged_class_content)
+            
+            # Update nodes_with_comments to reflect the changes
+            index_of_class_node = next(i for i, (_, n) in enumerate(nodes_with_comments) if n == class_node)
+            nodes_with_comments = (
+                nodes_with_comments[:index_of_class_node] + 
+                [(rearranged_class_content, rearranged_class_node)] + 
+                nodes_with_comments[index_of_class_node + 1:]
+            )
 
         # Dependency graph for assignments
         assignment_dependency_graph = assignment_build_dependency_graph(
