@@ -101,6 +101,29 @@ def _is_assignment_target_an_attribute(node):
 
 
 class FunctionOrderingFormatter(BaseFormatter):
+    def _class_node_sort_key(node):
+        # 1. Assignments that do not depend on other functions inside the class
+        if isinstance(node, ast.Assign) and not _is_assignment_dependent_on_function_or_class(node):
+            return (1, 0, getattr(node, "name", ""))
+
+        # 2. Functions with specific decorators
+        if isinstance(node, ast.FunctionDef):
+            decorators = {d.attr for d in node.decorator_list if isinstance(d, ast.Attribute)}
+            if any(d in decorators for d in ["setter", "getter"]) or any(
+                isinstance(d, ast.Name) and d.id == "property" for d in node.decorator_list
+            ):
+                return (2, node.name)
+
+        # 3. Other functions
+        if isinstance(node, ast.FunctionDef):
+            return (3, node.name)
+
+        # 4. Assignments that depend on other functions inside the class
+        if isinstance(node, ast.Assign) and _is_assignment_dependent_on_function_or_class(node):
+            return (4, 0, getattr(node, "name", ""))
+
+        return (5, 0, getattr(node, "name", ""))
+
     def _remove_existing_headers(self, source_code: str) -> str:
         return HEADER_PATTERN.sub("", source_code)
 
@@ -295,6 +318,29 @@ class FunctionOrderingFormatter(BaseFormatter):
             else:
                 reordered_code_list.append(code)
                 prev_was_assignment = False
+                
+            if isinstance(node, ast.ClassDef):
+                # Process the nodes within the class
+                class_nodes_with_comments = self._extract_all_nodes_with_comments(node, code)
+                class_nodes_sorted = sorted(class_nodes_with_comments, key=lambda x: _class_node_sort_key(x[1]))
+
+                # Add headers and concatenate nodes
+                class_content = []
+                has_properties = any(isinstance(n, ast.FunctionDef) and (
+                    any(d.attr for d in n.decorator_list if isinstance(d, ast.Attribute)) or
+                    any(isinstance(d, ast.Name) and d.id == "property" for d in n.decorator_list)
+                ) for _, n in class_nodes_sorted)
+                has_methods = any(isinstance(n, ast.FunctionDef) for _, n in class_nodes_sorted)
+                if has_properties:
+                    class_content.append("# Properties #\n# ---------- #")
+                for _, n in class_nodes_sorted:
+                    if isinstance(n, ast.FunctionDef) and not has_properties and has_methods:
+                        class_content.append("# Instance Methods #\n# ---------------- #")
+                        has_methods = False
+                    class_content.append(code)
+                
+                # Replace the class content in your reordered_code_list
+                reordered_code_list.append("\n".join(class_content))
 
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
