@@ -138,8 +138,21 @@ class FunctionOrderingFormatter(BaseFormatter):
             for node in tree.body
         ]
         
+    HEADERS = [
+        "# Properties #",
+        "# ---------- #",
+        "# Instance Methods #",
+        "# ---------------- #",
+    ]
+
+    def _is_header_line(line: str) -> bool:
+        return line.strip() in HEADERS
+
     def _rearrange_class_members(self, class_node, source_code: str) -> List[str]:
         nodes_with_comments = self._extract_all_nodes_with_comments(class_node, source_code)
+
+        # Filter out existing headers
+        nodes_with_comments = [(code, node) for code, node in nodes_with_comments if not _is_header_line(code)]
 
         # Grouping nodes
         non_dependent_assignments = []
@@ -175,15 +188,21 @@ class FunctionOrderingFormatter(BaseFormatter):
         properties.sort(key=lambda x: x[1].name)
         instance_methods.sort(key=lambda x: x[1].name)
 
+        # Merge dependent assignments with instance_methods and sort them together
+        instance_methods += dependent_assignments
+        instance_methods.sort(key=lambda x: x[1].name if isinstance(x[1], ast.FunctionDef) else '')
+
         sorted_nodes = non_dependent_assignments + [
             ("# Properties #", None),
             ("# ---------- #", None)
         ] + properties + [
             ("# Instance Methods #", None),
             ("# ---------------- #", None)
-        ] + instance_methods + dependent_assignments
+        ] + instance_methods
 
-        return [code for code, _ in sorted_nodes]
+        # Adding the class definition on top
+        class_definition = source_code.splitlines()[class_node.lineno - 1]
+        return [class_definition] + [code for code, _ in sorted_nodes]
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
