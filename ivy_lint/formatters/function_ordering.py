@@ -99,6 +99,18 @@ def _is_assignment_target_an_attribute(node):
                 return True
     return False
 
+def determine_method_type(node: ast.FunctionDef) -> str:
+    if any(
+        isinstance(decorator, ast.Attribute)
+        and decorator.attr in ["setter", "getter"]
+        for decorator in node.decorator_list
+    ):
+        return "property"
+    elif any(isinstance(decorator, ast.Name) and decorator.id == "property" for decorator in node.decorator_list):
+        return "property"
+    else:
+        return "method"
+
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -223,10 +235,44 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (1, 0, target_str)
 
             if isinstance(node, ast.ClassDef):
-                try:
-                    return (2, sorted_classes.index(node.name), node.name)
-                except ValueError:
-                    return (2, len(sorted_classes), node.name)
+                internal_assignments = [
+                    (code, sub_node)
+                    for code, sub_node in nodes_with_comments
+                    if isinstance(sub_node, ast.Assign) and _is_assignment_dependent_on_function_or_class(sub_node)
+                ]
+                internal_properties = sorted(
+                    [
+                        (code, sub_node)
+                        for code, sub_node in nodes_with_comments
+                        if isinstance(sub_node, ast.FunctionDef) and determine_method_type(sub_node) == "property"
+                    ],
+                    key=lambda x: x[1].name,
+                )
+                internal_methods = sorted(
+                    [
+                        (code, sub_node)
+                        for code, sub_node in nodes_with_comments
+                        if isinstance(sub_node, ast.FunctionDef) and determine_method_type(sub_node) == "method"
+                    ],
+                    key=lambda x: x[1].name,
+                )
+                other_assignments = [
+                    (code, sub_node)
+                    for code, sub_node in nodes_with_comments
+                    if isinstance(sub_node, ast.Assign) and not _is_assignment_dependent_on_function_or_class(sub_node)
+                ]
+
+                class_content = []
+                class_content.extend(other_assignments)
+                class_content.append(("\n# Properties #\n# ---------- #\n", None))
+                class_content.extend(internal_properties)
+                class_content.append(("\n# Instance Methods #\n# ---------------- #\n", None))
+                class_content.extend(internal_methods)
+                class_content.extend(internal_assignments)
+
+                nodes_with_comments = [item for item in nodes_with_comments if item not in class_content]
+                nodes_with_comments.insert(nodes_with_comments.index((code, node)), *class_content)
+
 
             if isinstance(node, ast.FunctionDef):
                 if node.name.startswith("_") or has_st_composite_decorator(node):
