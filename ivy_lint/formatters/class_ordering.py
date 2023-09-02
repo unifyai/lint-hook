@@ -39,7 +39,7 @@ def assignment_build_dependency_graph_for_class(class_node: ast.ClassDef):
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     for name in right_side_names:
-                        if graph.has_node(name):
+                        if graph.has_node(name) and name != target.id:
                             graph.add_edge(name, target.id)
 
     return graph
@@ -62,14 +62,14 @@ class ClassFunctionOrderingFormatter(BaseFormatter):
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         tree = ast.parse(source_code)
 
-        for node in tree.body:
+        for idx, node in enumerate(tree.body):
             if isinstance(node, ast.ClassDef):
                 nodes_within_class = self._extract_all_nodes_within_class(node)
 
                 # Dependency graph for assignments inside class
                 assignment_dependency_graph_for_class = assignment_build_dependency_graph_for_class(node)
                 dependent_assignments = set(assignment_dependency_graph_for_class.nodes()) - set(
-                    assignment_dependency_graph_for_class.edges())
+                    nx.descendants(assignment_dependency_graph_for_class, source=list(assignment_dependency_graph_for_class.nodes())[0]))
                 independent_assignments = set(assignment_dependency_graph_for_class.nodes()) - dependent_assignments
 
                 reordered_nodes = []
