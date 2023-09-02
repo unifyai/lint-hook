@@ -69,7 +69,7 @@ class ClassFunctionOrderingFormatter(BaseFormatter):
             decorator_list=class_node.decorator_list
         )
 
-    def format_file(self, filename: str) -> bool:
+    def _format_file(self, filename: str) -> bool:
         try:
             with open(filename, "r", encoding="utf-8") as f:
                 source_code = f.read()
