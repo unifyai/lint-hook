@@ -99,6 +99,35 @@ def _is_assignment_target_an_attribute(node):
                 return True
     return False
 
+def assignment_function_dependency_graph(nodes):
+    graph = nx.DiGraph()
+
+    # Create nodes for all assignments and functions
+    for node in nodes:
+        if isinstance(node, (ast.FunctionDef, ast.Assign)):
+            graph.add_node(node)
+
+    # Create edges based on dependencies
+    for node in nodes:
+        if isinstance(node, ast.Assign):
+            names = extract_names_from_assignment(node)
+            for name in names:
+                for target in nodes:
+                    if isinstance(target, ast.FunctionDef) and target.name == name:
+                        graph.add_edge(node, target)
+
+    return graph
+
+def classify_class_member(node):
+    if isinstance(node, ast.Assign):
+        return "assignment"
+    elif isinstance(node, ast.FunctionDef):
+        if any(isinstance(dec, ast.Attribute) and dec.attr in ['setter', 'getter'] for dec in node.decorator_list):
+            return "property_method"
+        else:
+            return "regular_method"
+
+    return "other"
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -324,3 +353,45 @@ class FunctionOrderingFormatter(BaseFormatter):
                 " code."
             )
             return False
+
+
+class ExtendedFunctionOrderingFormatter(FunctionOrderingFormatter):
+
+    def _rearrange_class_members(self, class_node: ast.ClassDef) -> List[ast.AST]:
+        # Extract all assignments and functions
+        assignments_and_functions = [
+            node for node in class_node.body if isinstance(node, (ast.Assign, ast.FunctionDef))
+        ]
+
+        # Build the dependency graph
+        graph = assignment_function_dependency_graph(assignments_and_functions)
+        sorted_nodes = list(nx.topological_sort(graph))
+
+        # Separate nodes based on type and sort accordingly
+        assignments_top = [node for node in sorted_nodes if classify_class_member(node) == "assignment" and not graph.in_degree(node)]
+        property_methods = sorted([node for node in sorted_nodes if classify_class_member(node) == "property_method"], key=lambda x: x.name)
+        regular_methods = sorted([node for node in sorted_nodes if classify_class_member(node) == "regular_method"], key=lambda x: x.name)
+        assignments_bottom = [node for node in sorted_nodes if classify_class_member(node) == "assignment" and graph.in_degree(node)]
+
+        reordered_nodes = assignments_top
+        if property_methods:
+            reordered_nodes += [ast.parse("# Properties #\n# ---------- #").body[0]] + property_methods
+        if regular_methods:
+            reordered_nodes += [ast.parse("# Instance Methods #\n# ---------------- #").body[0]] + regular_methods
+        reordered_nodes += assignments_bottom
+
+        return reordered_nodes
+
+    def _rearrange_functions_and_classes(self, source_code: str) -> str:
+        source_code = super()._rearrange_functions_and_classes(source_code)
+        tree = ast.parse(source_code)
+
+        # Iterate through the tree to rearrange class members
+        new_body = []
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                node.body = self._rearrange_class_members(node)
+            new_body.append(node)
+
+        tree.body = new_body
+        return ast.dump(tree)
