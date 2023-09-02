@@ -14,34 +14,6 @@ FILE_PATTERN = re.compile(
     r"(ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*"
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
-def is_property_related(node: ast.FunctionDef) -> bool:
-    if any(isinstance(decorator, ast.Name) and decorator.id == "property" for decorator in node.decorator_list):
-        return True
-    for decorator in node.decorator_list:
-        if isinstance(decorator, ast.Attribute) and decorator.attr in {"getter", "setter"}:
-            return True
-    return False
-
-def class_sort_key(item, class_assignments_dependency_graph, class_functions):
-    node = item[1]
-
-    # For assignments that do not depend on other functions inside the class
-    if isinstance(node, ast.Assign):
-        if _is_assignment_dependent_on_function_or_class(node):
-            return (4, 0, getattr(node, "name", ""))
-        else:
-            return (1, 0, getattr(node, "name", ""))
-
-    # For properties and their setter/getter
-    if isinstance(node, ast.FunctionDef) and is_property_related(node):
-        return (2, node.name)
-
-    # For other instance methods
-    if isinstance(node, ast.FunctionDef):
-        return (3, node.name)
-
-    return (5, 0, getattr(node, "name", ""))
-
 
 
 def class_build_dependency_graph(nodes_with_comments):
@@ -251,36 +223,10 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (1, 0, target_str)
 
             if isinstance(node, ast.ClassDef):
-                # Extract nodes inside the class
-                class_nodes_with_comments = [
-                    (code, n) for code, n in nodes_with_comments if n in node.body
-                ]
-
-                # Create a dependency graph for assignments inside the class
-                class_assignment_dependency_graph = assignment_build_dependency_graph(
-                    class_nodes_with_comments
-                )
-                
-                # Sort nodes inside the class
-                class_nodes_sorted = sorted(
-                    class_nodes_with_comments, 
-                    key=lambda i: class_sort_key(i, class_assignment_dependency_graph, node.body)
-                )
-                
-                # Construct ordered code for the class
-                class_reordered_code = [ast.dump(n) for _, n in class_nodes_sorted]
-                
-                # Add headers
-                if any(is_property_related(n) for _, n in class_nodes_with_comments):
-                    class_reordered_code.insert(0, "# Properties #\n# ---------- #")
-                
-                has_instance_methods = any(
-                    isinstance(n, ast.FunctionDef) and not is_property_related(n) for _, n in class_nodes_with_comments
-                )
-                if has_instance_methods:
-                    class_reordered_code.append("# Instance Methods #\n# ---------------- #")
-                
-                node.body = class_reordered_code
+                try:
+                    return (2, sorted_classes.index(node.name), node.name)
+                except ValueError:
+                    return (2, len(sorted_classes), node.name)
 
             if isinstance(node, ast.FunctionDef):
                 if node.name.startswith("_") or has_st_composite_decorator(node):
