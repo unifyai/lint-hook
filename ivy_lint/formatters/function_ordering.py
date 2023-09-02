@@ -39,7 +39,7 @@ def class_build_dependency_graph(nodes_with_comments):
                     inner_node_name = getattr(inner_node, "name", None) or ast.dump(inner_node)
                     inner_class_graph.add_node(inner_node_name)
                 if isinstance(inner_node, ast.FunctionDef) and inner_node.decorator_list:
-                    for decorator in inner_node.decorators:
+                    for decorator in inner_node.decorator_list:
                         if isinstance(decorator, ast.Attribute) and decorator.attr in ['getter', 'setter', 'property']:
                             inner_class_graph.add_edge(decorator.attr, inner_node.name)
 
