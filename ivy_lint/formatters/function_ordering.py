@@ -383,7 +383,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                 prev_was_assignment = False
 
         reordered_code = "\n".join(reordered_code_list).strip()
-        reordered_code = reorder_classes_in_code(reordered_code)
+        reordered_code = self.reorder_classes_in_code(reordered_code)
         if not reordered_code.endswith("\n"):
             reordered_code += "\n"
 
