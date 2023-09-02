@@ -199,6 +199,16 @@ class FunctionOrderingFormatter(BaseFormatter):
                 )
             return False
 
+        def get_decorator_name(decorator):
+            if isinstance(decorator, ast.Name):
+                return decorator.id
+            elif isinstance(decorator, ast.Call):
+                # In the case of a decorator like @decorator_name(arg)
+                # Return the name of the decorator, if it's a simple function call
+                if isinstance(decorator.func, ast.Name):
+                    return decorator.func.id
+            return None
+
         def sort_key(item):
             node = item[1]
 
@@ -248,7 +258,12 @@ class FunctionOrderingFormatter(BaseFormatter):
                     dependent_assignments = [a for a in assignments if contains_any_name(ast.dump(a), [m.name for m in methods])]
 
                     # Sort methods
-                    property_methods = sorted([m for m in methods if any(d.id.endswith('setter') or d.id.endswith('getter') for d in m.decorator_list)], key=lambda x: x.name)
+                    property_methods = sorted(
+                        [m for m in methods if any(
+                            get_decorator_name(d).endswith('setter') or get_decorator_name(d).endswith('getter') for d in m.decorator_list if get_decorator_name(d)
+                        )],
+                        key=lambda x: x.name
+                    )
                     other_methods = sorted([m for m in methods if m not in property_methods], key=lambda x: x.name)
 
                     # Rebuild the class body
