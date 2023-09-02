@@ -15,6 +15,28 @@ FILE_PATTERN = re.compile(
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
+def internal_class_dependencies(class_node: ast.ClassDef) -> Tuple[Set[str], Dict[str, Set[str]]]:
+    independent_assignments = set()
+    dependent_assignments = {}
+
+    for node in class_node.body:
+        if isinstance(node, ast.Assign):
+            target_names = {t.id for t in node.targets if isinstance(t, ast.Name)}
+            right_side_names = extract_names_from_assignment(node)
+            
+            dependent = False
+            for target_name in target_names:
+                for right_side_name in right_side_names:
+                    if any(isinstance(n, ast.FunctionDef) and n.name == right_side_name for n in class_node.body):
+                        dependent_assignments.setdefault(target_name, set()).add(right_side_name)
+                        dependent = True
+                        break
+
+            if not dependent:
+                independent_assignments |= target_names
+
+    return independent_assignments, dependent_assignments
+
 
 def class_build_dependency_graph(nodes_with_comments):
     graph = nx.DiGraph()
@@ -99,35 +121,6 @@ def _is_assignment_target_an_attribute(node):
                 return True
     return False
 
-def assignment_function_dependency_graph(nodes):
-    graph = nx.DiGraph()
-
-    # Create nodes for all assignments and functions
-    for node in nodes:
-        if isinstance(node, (ast.FunctionDef, ast.Assign)):
-            graph.add_node(node)
-
-    # Create edges based on dependencies
-    for node in nodes:
-        if isinstance(node, ast.Assign):
-            names = extract_names_from_assignment(node)
-            for name in names:
-                for target in nodes:
-                    if isinstance(target, ast.FunctionDef) and target.name == name:
-                        graph.add_edge(node, target)
-
-    return graph
-
-def classify_class_member(node):
-    if isinstance(node, ast.Assign):
-        return "assignment"
-    elif isinstance(node, ast.FunctionDef):
-        if any(isinstance(dec, ast.Attribute) and dec.attr in ['setter', 'getter'] for dec in node.decorator_list):
-            return "property_method"
-        else:
-            return "regular_method"
-
-    return "other"
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
@@ -252,6 +245,12 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (1, 0, target_str)
 
             if isinstance(node, ast.ClassDef):
+                internal_independent_assignments, internal_dependent_assignments = internal_class_dependencies(node)
+                
+                class_body_sorted = sorted(node.body, key=lambda n: class_internal_sort_key(n, internal_independent_assignments, internal_dependent_assignments))
+                
+                # Reassign the body of the class to the sorted nodes
+                node.body = class_body_sorted
                 try:
                     return (2, sorted_classes.index(node.name), node.name)
                 except ValueError:
@@ -264,6 +263,21 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (5, 0, node.name)
 
             return (8, 0, getattr(node, "name", ""))
+        
+        def class_internal_sort_key(internal_node, independent_assignments, dependent_assignments):
+            if isinstance(internal_node, ast.Assign):
+                targets = [t.id for t in internal_node.targets if isinstance(t, ast.Name)]
+                if any(target in independent_assignments for target in targets):
+                    return (1, internal_node.lineno)
+                elif any(target in dependent_assignments for target in targets):
+                    return (4, internal_node.lineno)
+            elif isinstance(internal_node, ast.FunctionDef):
+                if any(d.attr in ['setter', 'getter'] for d in internal_node.decorator_list if isinstance(d, ast.Attribute)):
+                    return (2, internal_node.name)
+                else:
+                    return (3, internal_node.name)
+            return (5, internal_node.lineno)
+
 
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
         reordered_code_list = []
@@ -289,7 +303,18 @@ class FunctionOrderingFormatter(BaseFormatter):
         prev_was_assignment = False
         last_function_type = None
 
-        for code, node in nodes_sorted:
+        for idx, (code, node) in enumerate(nodes_sorted):
+            if isinstance(node, ast.ClassDef):
+                # Adding the Properties header
+                properties = [n for n in node.body if isinstance(n, ast.FunctionDef) and any(d.attr in ['setter', 'getter'] for d in node.decorator_list if isinstance(d, ast.Attribute))]
+                if properties:
+                    nodes_sorted.insert(idx + 1, ("\n# Properties #\n# ---------- #", None))
+                    idx += 1
+                
+                # Adding the Instance Methods header
+                methods = [n for n in node.body if isinstance(n, ast.FunctionDef) and not any(d.attr in ['setter', 'getter'] for d in node.decorator_list if isinstance(d, ast.Attribute))]
+                if methods:
+                    nodes_sorted.insert(idx + 1, ("\n# Instance Methods #\n# ---------------- #", None))
             # If the docstring was added at the beginning, skip the node
             if (
                 docstring_added
@@ -353,62 +378,3 @@ class FunctionOrderingFormatter(BaseFormatter):
                 " code."
             )
             return False
-
-
-class ExtendedFunctionOrderingFormatter(FunctionOrderingFormatter):
-
-    def _rearrange_class_members(self, class_node: ast.ClassDef) -> List[ast.AST]:
-        # Extract all assignments and functions
-        assignments_and_functions = [
-            node for node in class_node.body if isinstance(node, (ast.Assign, ast.FunctionDef))
-        ]
-
-        # Build the dependency graph
-        graph = assignment_function_dependency_graph(assignments_and_functions)
-        sorted_nodes = list(nx.topological_sort(graph))
-
-        # Separate nodes based on type and sort accordingly
-        assignments_top = [node for node in sorted_nodes if classify_class_member(node) == "assignment" and not graph.in_degree(node)]
-        property_methods = sorted([node for node in sorted_nodes if classify_class_member(node) == "property_method"], key=lambda x: x.name)
-        regular_methods = sorted([node for node in sorted_nodes if classify_class_member(node) == "regular_method"], key=lambda x: x.name)
-        assignments_bottom = [node for node in sorted_nodes if classify_class_member(node) == "assignment" and graph.in_degree(node)]
-
-        reordered_nodes = assignments_top
-        if property_methods:
-            reordered_nodes += [ast.parse("# Properties #\n# ---------- #").body[0]] + property_methods
-        if regular_methods:
-            reordered_nodes += [ast.parse("# Instance Methods #\n# ---------------- #").body[0]] + regular_methods
-        reordered_nodes += assignments_bottom
-
-        return reordered_nodes
-
-    def _rearrange_functions_and_classes(self, source_code: str) -> str:
-        # Original reordering without class member specifics
-        source_code = super()._rearrange_functions_and_classes(source_code)
-        tree = ast.parse(source_code)
-
-        # For reconstructing the reordered code
-        reordered_code_list = []
-
-        # Iterate through the tree to rearrange class members
-        for node in tree.body:
-            # If it's a class node, rearrange its members
-            if isinstance(node, ast.ClassDef):
-                # Get the reordered class members
-                reordered_class_members = self._rearrange_class_members(node)
-                
-                # Add the class definition header to the code list
-                reordered_code_list.append(f"class {node.name}:")
-
-                # Add each member's code to the code list
-                for member in reordered_class_members:
-                    member_code, _ = self._extract_node_with_leading_comments(member, source_code)
-                    reordered_code_list.append("    " + member_code.replace("\n", "\n    "))
-
-            # If it's not a class node, add its code to the code list as is
-            else:
-                node_code, _ = self._extract_node_with_leading_comments(node, source_code)
-                reordered_code_list.append(node_code)
-
-        # Return the fully reordered code as a string
-        return "\n".join(reordered_code_list)
