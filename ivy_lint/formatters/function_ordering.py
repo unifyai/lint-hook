@@ -15,65 +15,91 @@ FILE_PATTERN = re.compile(
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
-def class_internal_dependency_graph(nodes_with_comments):
-    graph = nx.DiGraph()
+def extract_property_name_from_decorator(decorator) -> str:
+    if isinstance(decorator, ast.Attribute) and decorator.attr in ['setter', 'getter']:
+        return decorator.value.id
+    elif isinstance(decorator, ast.Name) and decorator.id == 'property':
+        return decorator.id
+    return None
 
+def class_content_dependency_graph(nodes_with_comments):
+    graph = nx.DiGraph()
     for code, node in nodes_with_comments:
+        if isinstance(node, ast.FunctionDef):
+            graph.add_node(node.name)
+            for decorator in node.decorator_list:
+                property_name = extract_property_name_from_decorator(decorator)
+                if property_name:
+                    if not graph.has_node(property_name):
+                        graph.add_node(property_name)
+                    graph.add_edge(node.name, property_name)
+
         if isinstance(node, ast.Assign):
-            right_side_names = extract_names_from_assignment(node)
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     graph.add_node(target.id)
-                    for name in right_side_names:
-                        graph.add_edge(name, target.id)
+                    if contains_any_name(code, list(graph.nodes())):
+                        for dep_name in graph.nodes():
+                            if dep_name in code:
+                                graph.add_edge(target.id, dep_name)
     return graph
 
-def _class_content_order(node, nodes_with_comments):
-    # Extract nodes relevant to the class
-    class_nodes_with_comments = [
-        (code, n) for code, n in nodes_with_comments if hasattr(n, 'parent') and n.parent is node
+def reorder_class_content(code, node):
+    if not isinstance(node, ast.ClassDef):
+        return code
+    
+    nodes_with_comments = [
+        _extract_node_with_leading_comments(sub_node, code)
+        for sub_node in node.body
+    ]
+    
+    dependency_graph = class_content_dependency_graph(nodes_with_comments)
+    
+    independent_assignments = [
+        c for c in nodes_with_comments if isinstance(c[1], ast.Assign) and not any(True for pred in dependency_graph.predecessors(c[1].targets[0].id))
     ]
 
-    # Create a graph to hold dependency relationships within the class
-    internal_graph = class_internal_dependency_graph(class_nodes_with_comments)
-    
-    # Separate assignments, properties, and methods
-    independent_assignments = []
-    properties = []
-    methods = []
-    dependent_assignments = []
-    
-    for code, inner_node in class_nodes_with_comments:
-        if isinstance(inner_node, ast.FunctionDef):
-            if any(
-                isinstance(decorator, ast.Attribute)
-                and decorator.attr in ["setter", "getter", "property"]
-                for decorator in inner_node.decorator_list
-            ):
-                properties.append((code, inner_node))
-            else:
-                methods.append((code, inner_node))
-        elif isinstance(inner_node, ast.Assign):
-            if internal_graph.has_node(inner_node.targets[0].id):
-                dependent_assignments.append((code, inner_node))
-            else:
-                independent_assignments.append((code, inner_node))
+    properties = [
+        c for c in nodes_with_comments if isinstance(c[1], ast.FunctionDef) and any(
+            extract_property_name_from_decorator(deco) for deco in c[1].decorator_list
+        )
+    ]
 
-    # Sort methods and properties alphabetically
-    properties.sort(key=lambda x: x[1].name)
-    methods.sort(key=lambda x: x[1].name)
+    instance_methods = [
+        c for c in nodes_with_comments if isinstance(c[1], ast.FunctionDef) and not any(
+            extract_property_name_from_decorator(deco) for deco in c[1].decorator_list
+        )
+    ]
 
-    # Compile class contents
-    ordered_nodes = independent_assignments
+    dependent_assignments = [
+        c for c in nodes_with_comments if isinstance(c[1], ast.Assign) and any(True for pred in dependency_graph.predecessors(c[1].targets[0].id))
+    ]
+
+    reordered_content = independent_assignments
+
     if properties:
-        ordered_nodes.append(("\n# Properties #\n# ---------- #\n", None))
-        ordered_nodes += properties
-    if methods:
-        ordered_nodes.append(("\n# Instance Methods #\n# ---------------- #\n", None))
-        ordered_nodes += methods
-    ordered_nodes += dependent_assignments
+        reordered_content.append(("# Properties #", None))
+        reordered_content.append(("# ---------- #", None))
+        reordered_content.extend(sorted(properties, key=lambda x: x[1].name))
 
-    return ordered_nodes
+    if instance_methods:
+        reordered_content.append(("# Instance Methods #", None))
+        reordered_content.append(("# ---------------- #", None))
+        reordered_content.extend(sorted(instance_methods, key=lambda x: x[1].name))
+    
+    reordered_content.extend(dependent_assignments)
+    
+    # combine them to get the resulting code
+    return "\n\n".join([c[0] for c in reordered_content if c[0]])
+
+def reorder_classes_in_code(source_code: str) -> str:
+    tree = ast.parse(source_code)
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            class_code, _ = _extract_node_with_leading_comments(node, source_code)
+            reordered_class_code = reorder_class_content(class_code, node)
+            source_code = source_code.replace(class_code, reordered_class_code, 1)
+    return source_code
 
 def class_build_dependency_graph(nodes_with_comments):
     graph = nx.DiGraph()
@@ -320,49 +346,43 @@ class FunctionOrderingFormatter(BaseFormatter):
         last_function_type = None
 
         for code, node in nodes_sorted:
-            if isinstance(node, ast.ClassDef):
-                # If the node is a class definition, handle its internal order
-                class_content = _class_content_order(node, nodes_with_comments)
-                reordered_code_list.append(code.split(":")[0] + ":")  # Add class header
-                for class_code, _ in class_content:
-                    reordered_code_list.append(class_code)
-            else:
-                # If the docstring was added at the beginning, skip the node
-                if (
-                    docstring_added
-                    and isinstance(node, ast.Expr)
-                    and isinstance(node.value, ast.Str)
-                ):
-                    continue
+            # If the docstring was added at the beginning, skip the node
+            if (
+                docstring_added
+                and isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Str)
+            ):
+                continue
 
-                current_function_type = None
-                if isinstance(node, ast.FunctionDef):
-                    if node.name.startswith("_") or has_st_composite_decorator(node):
-                        current_function_type = "helper"
-                        if last_function_type != "helper":
-                            reordered_code_list.append(
-                                "\n\n# --- Helpers --- #\n# --------------- #"
-                            )
-                    else:
-                        current_function_type = "api"
-                        if last_function_type != "api" and has_helper_functions:
-                            reordered_code_list.append(
-                                "\n\n# --- Main --- #\n# ------------ #"
-                            )
+            current_function_type = None
+            if isinstance(node, ast.FunctionDef):
+                if node.name.startswith("_") or has_st_composite_decorator(node):
+                    current_function_type = "helper"
+                    if last_function_type != "helper":
+                        reordered_code_list.append(
+                            "\n\n# --- Helpers --- #\n# --------------- #"
+                        )
+                else:
+                    current_function_type = "api"
+                    if last_function_type != "api" and has_helper_functions:
+                        reordered_code_list.append(
+                            "\n\n# --- Main --- #\n# ------------ #"
+                        )
 
-                last_function_type = current_function_type or last_function_type
+            last_function_type = current_function_type or last_function_type
 
-                if isinstance(node, ast.Assign):
-                    if prev_was_assignment:
-                        reordered_code_list.append(code.strip())
-                    else:
-                        reordered_code_list.append(code)
-                    prev_was_assignment = True
+            if isinstance(node, ast.Assign):
+                if prev_was_assignment:
+                    reordered_code_list.append(code.strip())
                 else:
                     reordered_code_list.append(code)
-                    prev_was_assignment = False
+                prev_was_assignment = True
+            else:
+                reordered_code_list.append(code)
+                prev_was_assignment = False
 
         reordered_code = "\n".join(reordered_code_list).strip()
+        reordered_code = reorder_classes_in_code(reordered_code)
         if not reordered_code.endswith("\n"):
             reordered_code += "\n"
 
