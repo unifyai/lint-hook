@@ -15,7 +15,7 @@ FILE_PATTERN = re.compile(
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
-def internal_class_dependencies(class_node: ast.ClassDef) -> Tuple[Set[str], Dict[str, Set[str]]]:
+def internal_class_dependencies(class_node: ast.ClassDef) -> Tuple[set[str], Dict[str, set[str]]]:
     independent_assignments = set()
     dependent_assignments = {}
 
