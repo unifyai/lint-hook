@@ -259,8 +259,60 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         prev_was_assignment = False
         last_function_type = None
+        
+        def is_property_related_function(node):
+            return any(
+                isinstance(decorator, ast.Attribute) and decorator.attr in ["setter", "getter"]
+                or isinstance(decorator, ast.Name) and decorator.id == "property"
+                for decorator in node.decorator_list
+            )
+
+        # This function checks if an assignment node depends on any function inside the class
+        def is_dependent_assignment(node, function_names):
+            if isinstance(node, ast.Assign):
+                right_side_names = extract_names_from_assignment(node)
+                return any(name in right_side_names for name in function_names)
+            return False
 
         for code, node in nodes_sorted:
+            if isinstance(class_node, ast.ClassDef):
+                independent_assignments = []
+                properties_functions = []
+                other_functions = []
+                dependent_assignments = []
+                function_names = [
+                    n.name for n in class_node.body if isinstance(n, ast.FunctionDef)
+                ]
+
+                for node in class_node.body:
+                    if isinstance(node, ast.FunctionDef):
+                        if is_property_related_function(node):
+                            properties_functions.append(node)
+                        else:
+                            other_functions.append(node)
+                    elif isinstance(node, ast.Assign):
+                        if is_dependent_assignment(node, function_names):
+                            dependent_assignments.append(node)
+                        else:
+                            independent_assignments.append(node)
+
+                # Sorting functions alphabetically
+                properties_functions.sort(key=lambda x: x.name)
+                other_functions.sort(key=lambda x: x.name)
+
+                # Rebuilding the class body
+                new_class_body = []
+                new_class_body.extend(independent_assignments)
+                if properties_functions:
+                    new_class_body.append("# Properties #\n# ---------- #")
+                    new_class_body.extend(properties_functions)
+                new_class_body.append("# Instance Methods #\n# ---------------- #")
+                new_class_body.extend(other_functions)
+                new_class_body.extend(dependent_assignments)
+
+                # Replacing the class node's body with the new ordered body
+                class_node.body = new_class_body
+
             # If the docstring was added at the beginning, skip the node
             if (
                 docstring_added
