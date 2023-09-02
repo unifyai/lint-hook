@@ -15,31 +15,11 @@ FILE_PATTERN = re.compile(
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
 
-def internal_class_dependencies(class_node: ast.ClassDef) -> Tuple[set[str], dict[str, set[str]]]:
-    independent_assignments = set()
-    dependent_assignments = {}
-
-    for node in class_node.body:
-        if isinstance(node, ast.Assign):
-            target_names = {t.id for t in node.targets if isinstance(t, ast.Name)}
-            right_side_names = extract_names_from_assignment(node)
-            
-            dependent = False
-            for target_name in target_names:
-                for right_side_name in right_side_names:
-                    if any(isinstance(n, ast.FunctionDef) and n.name == right_side_name for n in class_node.body):
-                        dependent_assignments.setdefault(target_name, set()).add(right_side_name)
-                        dependent = True
-                        break
-
-            if not dependent:
-                independent_assignments |= target_names
-
-    return independent_assignments, dependent_assignments
-
 
 def class_build_dependency_graph(nodes_with_comments):
     graph = nx.DiGraph()
+    in_class_dependency = {}  # Dictionary to hold dependencies within each class
+    
     for _, node in nodes_with_comments:
         if isinstance(node, ast.ClassDef):
             graph.add_node(node.name)
@@ -48,7 +28,21 @@ def class_build_dependency_graph(nodes_with_comments):
                     graph.add_node(base.id)
                 if isinstance(base, ast.Name):
                     graph.add_edge(base.id, node.name)
-    return graph
+
+            # Extract assignments and methods from the class
+            assignments, methods = [], []
+            for member in node.body:
+                if isinstance(member, ast.FunctionDef):
+                    methods.append(member)
+                elif isinstance(member, ast.Assign):
+                    assignments.append(member)
+
+            in_class_dependency[node.name] = {
+                'assignments': assignments,
+                'methods': methods
+            }
+    
+    return graph, in_class_dependency
 
 
 def contains_any_name(code: str, names: List[str]) -> bool:
@@ -167,7 +161,7 @@ class FunctionOrderingFormatter(BaseFormatter):
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
 
         # Dependency graph for class inheritance
-        class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
+        class_dependency_graph, in_class_dependencies = class_build_dependency_graph(nodes_with_comments)
         sorted_classes = list(nx.topological_sort(class_dependency_graph))
 
         # Dependency graph for assignments
@@ -245,12 +239,20 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (1, 0, target_str)
 
             if isinstance(node, ast.ClassDef):
-                internal_independent_assignments, internal_dependent_assignments = internal_class_dependencies(node)
-                
-                class_body_sorted = sorted(node.body, key=lambda n: class_internal_sort_key(n, internal_independent_assignments, internal_dependent_assignments))
-                
-                # Reassign the body of the class to the sorted nodes
-                node.body = class_body_sorted
+                if isinstance(node, ast.ClassDef):
+                    # When we encounter a class node, we modify its body to order it as per the new rules
+                    assignments, methods = in_class_dependencies.get(node.name, {}).get('assignments', []), in_class_dependencies.get(node.name, {}).get('methods', [])
+                    
+                    # Sort assignments
+                    independent_assignments = [a for a in assignments if not contains_any_name(ast.dump(a), [m.name for m in methods])]
+                    dependent_assignments = [a for a in assignments if contains_any_name(ast.dump(a), [m.name for m in methods])]
+
+                    # Sort methods
+                    property_methods = sorted([m for m in methods if any(d.id.endswith('setter') or d.id.endswith('getter') for d in m.decorator_list)], key=lambda x: x.name)
+                    other_methods = sorted([m for m in methods if m not in property_methods], key=lambda x: x.name)
+
+                    # Rebuild the class body
+                    node.body = independent_assignments + [ast.parse("# Properties #\n# ---------- #").body[0]] + property_methods + [ast.parse("# Instance Methods #\n# ---------------- #").body[0]] + other_methods + dependent_assignments
                 try:
                     return (2, sorted_classes.index(node.name), node.name)
                 except ValueError:
@@ -263,21 +265,6 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (5, 0, node.name)
 
             return (8, 0, getattr(node, "name", ""))
-        
-        def class_internal_sort_key(internal_node, independent_assignments, dependent_assignments):
-            if isinstance(internal_node, ast.Assign):
-                targets = [t.id for t in internal_node.targets if isinstance(t, ast.Name)]
-                if any(target in independent_assignments for target in targets):
-                    return (1, internal_node.lineno)
-                elif any(target in dependent_assignments for target in targets):
-                    return (4, internal_node.lineno)
-            elif isinstance(internal_node, ast.FunctionDef):
-                if any(d.attr in ['setter', 'getter'] for d in internal_node.decorator_list if isinstance(d, ast.Attribute)):
-                    return (2, internal_node.name)
-                else:
-                    return (3, internal_node.name)
-            return (5, internal_node.lineno)
-
 
         nodes_sorted = sorted(nodes_with_comments, key=sort_key)
         reordered_code_list = []
@@ -303,18 +290,7 @@ class FunctionOrderingFormatter(BaseFormatter):
         prev_was_assignment = False
         last_function_type = None
 
-        for idx, (code, node) in enumerate(nodes_sorted):
-            if isinstance(node, ast.ClassDef):
-                # Adding the Properties header
-                properties = [n for n in node.body if isinstance(n, ast.FunctionDef) and any(d.attr in ['setter', 'getter'] for d in node.decorator_list if isinstance(d, ast.Attribute))]
-                if properties:
-                    nodes_sorted.insert(idx + 1, ("\n# Properties #\n# ---------- #", None))
-                    idx += 1
-                
-                # Adding the Instance Methods header
-                methods = [n for n in node.body if isinstance(n, ast.FunctionDef) and not any(d.attr in ['setter', 'getter'] for d in node.decorator_list if isinstance(d, ast.Attribute))]
-                if methods:
-                    nodes_sorted.insert(idx + 1, ("\n# Instance Methods #\n# ---------------- #", None))
+        for code, node in nodes_sorted:
             # If the docstring was added at the beginning, skip the node
             if (
                 docstring_added
