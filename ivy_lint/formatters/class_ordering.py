@@ -81,13 +81,13 @@ class ClassFunctionOrderingFormatter(BaseFormatter):
                         reordered_nodes.append(inner_node)
 
                 # 2. Add property-related functions
-                reordered_nodes.append("# Properties #\n# ---------- #")
+                reordered_nodes.append(ast.Expr(ast.Str(s="# Properties #\n# ---------- #")))
                 for inner_node in nodes_within_class:
                     if isinstance(inner_node, ast.FunctionDef) and has_property_decorators(inner_node):
                         reordered_nodes.append(inner_node)
 
                 # 3. Add other functions
-                reordered_nodes.append("# Instance Methods #\n# ---------------- #")
+                reordered_nodes.append(ast.Expr(ast.Str(s="# Instance Methods #\n# ---------------- #")))
                 for inner_node in nodes_within_class:
                     if isinstance(inner_node, ast.FunctionDef) and not has_property_decorators(inner_node):
                         reordered_nodes.append(inner_node)
@@ -100,6 +100,7 @@ class ClassFunctionOrderingFormatter(BaseFormatter):
                 node.body = reordered_nodes
 
         return ast.unparse(tree)
+
 
     def _format_file(self, filename: str) -> bool:
         if FILE_PATTERN.match(filename) is None:
