@@ -54,54 +54,52 @@ def has_property_decorators(node: ast.FunctionDef) -> bool:
     )
 
 
-class ClassFunctionOrderingFormatter(BaseFormatter):
+def sort_functions_by_name(func_nodes: List[ast.FunctionDef]) -> List[ast.FunctionDef]:
+    return sorted(func_nodes, key=lambda x: x.name)
 
-    def _extract_all_nodes_within_class(self, class_node: ast.ClassDef) -> List[ast.AST]:
-        return class_node.body
+
+class ClassFunctionOrderingFormatter(BaseFormatter):
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         tree = ast.parse(source_code)
 
-        for idx, node in enumerate(tree.body):
-            if isinstance(node, ast.ClassDef):
-                nodes_within_class = self._extract_all_nodes_within_class(node)
+        new_tree_body = []
 
-                # Dependency graph for assignments inside class
-                assignment_dependency_graph_for_class = assignment_build_dependency_graph_for_class(node)
-                dependent_assignments = set(assignment_dependency_graph_for_class.nodes()) - set(
-                    nx.descendants(assignment_dependency_graph_for_class, source=list(assignment_dependency_graph_for_class.nodes())[0]))
-                independent_assignments = set(assignment_dependency_graph_for_class.nodes()) - dependent_assignments
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef):
+                new_tree_body.append(node)
+                continue
 
-                reordered_nodes = []
+            nodes_within_class = node.body
 
-                # 1. Add independent assignments
-                for inner_node in nodes_within_class:
-                    if (isinstance(inner_node, ast.Assign)
-                            and isinstance(inner_node.targets[0], ast.Name)
-                            and inner_node.targets[0].id in independent_assignments):
-                        reordered_nodes.append(inner_node)
+            # Dependency graph for assignments inside class
+            assignment_dependency_graph_for_class = assignment_build_dependency_graph_for_class(node)
+            dependent_assignments = set(assignment_dependency_graph_for_class.nodes()) - set(
+                nx.ancestors(assignment_dependency_graph_for_class, list(assignment_dependency_graph_for_class.nodes())[0]))
+            independent_assignments = set(assignment_dependency_graph_for_class.nodes()) - dependent_assignments
 
-                # 2. Add property-related functions
-                reordered_nodes.append(ast.Expr(ast.Str(s="# Properties #\n# ---------- #")))
-                for inner_node in nodes_within_class:
-                    if isinstance(inner_node, ast.FunctionDef) and has_property_decorators(inner_node):
-                        reordered_nodes.append(inner_node)
+            reordered_nodes = []
 
-                # 3. Add other functions
-                reordered_nodes.append(ast.Expr(ast.Str(s="# Instance Methods #\n# ---------------- #")))
-                for inner_node in nodes_within_class:
-                    if isinstance(inner_node, ast.FunctionDef) and not has_property_decorators(inner_node):
-                        reordered_nodes.append(inner_node)
+            # 1. Add independent assignments
+            reordered_nodes.extend([inner_node for inner_node in nodes_within_class if isinstance(inner_node, ast.Assign) and inner_node.targets[0].id in independent_assignments])
 
-                # 4. Add dependent assignments
-                for inner_node in nodes_within_class:
-                    if (isinstance(inner_node, ast.Assign)
-                            and isinstance(inner_node.targets[0], ast.Name)
-                            and inner_node.targets[0].id in dependent_assignments):
-                        reordered_nodes.append(inner_node)
+            # 2. Add property-related functions
+            property_functions = [inner_node for inner_node in nodes_within_class if isinstance(inner_node, ast.FunctionDef) and has_property_decorators(inner_node)]
+            reordered_nodes.append(ast.Expr(ast.Str(s="# Properties #\n# ---------- #")))
+            reordered_nodes.extend(sort_functions_by_name(property_functions))
 
-                node.body = reordered_nodes
+            # 3. Add other functions
+            other_functions = [inner_node for inner_node in nodes_within_class if isinstance(inner_node, ast.FunctionDef) and not has_property_decorators(inner_node)]
+            reordered_nodes.append(ast.Expr(ast.Str(s="# Instance Methods #\n# ---------------- #")))
+            reordered_nodes.extend(sort_functions_by_name(other_functions))
 
+            # 4. Add dependent assignments
+            reordered_nodes.extend([inner_node for inner_node in nodes_within_class if isinstance(inner_node, ast.Assign) and inner_node.targets[0].id in dependent_assignments])
+
+            node.body = reordered_nodes
+            new_tree_body.append(node)
+
+        tree.body = new_tree_body
         return ast.unparse(tree)
 
     def _format_file(self, filename: str) -> bool:
