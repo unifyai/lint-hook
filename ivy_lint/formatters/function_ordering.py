@@ -138,6 +138,50 @@ class FunctionOrderingFormatter(BaseFormatter):
             for node in tree.body
         ]
 
+    def _rearrange_class_internals(self, class_node, source_code):
+        assignments = []
+        properties = []
+        instance_methods = []
+        dependent_assignments = []
+
+        # Parse the class internals
+        for item in class_node.body:
+            if isinstance(item, ast.Assign):
+                # Identify assignments dependent on functions
+                right_side_names = extract_names_from_assignment(item)
+                if any(
+                    name in right_side_names for method in class_node.body
+                    if isinstance(method, ast.FunctionDef) and method.name == name
+                ):
+                    dependent_assignments.append(item)
+                else:
+                    assignments.append(item)
+            elif isinstance(item, ast.FunctionDef):
+                if any(decorator.attr in ['setter', 'getter'] for decorator in item.decorator_list if isinstance(decorator, ast.Attribute)):
+                    properties.append(item)
+                else:
+                    instance_methods.append(item)
+
+        properties.sort(key=lambda x: x.name)  # Alphabetically sort properties
+        instance_methods.sort(key=lambda x: x.name)  # Alphabetically sort instance methods
+
+        ordered_class_items = assignments + properties + instance_methods + dependent_assignments
+
+        # Insert headers for properties and instance methods
+        if properties:
+            properties.insert(0, '# Properties #\n# ---------- #')
+        if instance_methods:
+            instance_methods.insert(0, '# Instance Methods #\n# ---------------- #')
+
+        # Extract code snippets for each node
+        ordered_code = [
+            self._extract_node_with_leading_comments(node, source_code)[0]
+            for node in ordered_class_items
+            if not isinstance(node, str)  # Exclude our custom headers
+        ]
+
+        return "\n\n".join(ordered_code)
+    
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
 
@@ -259,60 +303,8 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         prev_was_assignment = False
         last_function_type = None
-        
-        def is_property_related_function(node):
-            return any(
-                isinstance(decorator, ast.Attribute) and decorator.attr in ["setter", "getter"]
-                or isinstance(decorator, ast.Name) and decorator.id == "property"
-                for decorator in node.decorator_list
-            )
-
-        # This function checks if an assignment node depends on any function inside the class
-        def is_dependent_assignment(node, function_names):
-            if isinstance(node, ast.Assign):
-                right_side_names = extract_names_from_assignment(node)
-                return any(name in right_side_names for name in function_names)
-            return False
 
         for code, node in nodes_sorted:
-            if isinstance(class_node, ast.ClassDef):
-                independent_assignments = []
-                properties_functions = []
-                other_functions = []
-                dependent_assignments = []
-                function_names = [
-                    n.name for n in class_node.body if isinstance(n, ast.FunctionDef)
-                ]
-
-                for node in class_node.body:
-                    if isinstance(node, ast.FunctionDef):
-                        if is_property_related_function(node):
-                            properties_functions.append(node)
-                        else:
-                            other_functions.append(node)
-                    elif isinstance(node, ast.Assign):
-                        if is_dependent_assignment(node, function_names):
-                            dependent_assignments.append(node)
-                        else:
-                            independent_assignments.append(node)
-
-                # Sorting functions alphabetically
-                properties_functions.sort(key=lambda x: x.name)
-                other_functions.sort(key=lambda x: x.name)
-
-                # Rebuilding the class body
-                new_class_body = []
-                new_class_body.extend(independent_assignments)
-                if properties_functions:
-                    new_class_body.append("# Properties #\n# ---------- #")
-                    new_class_body.extend(properties_functions)
-                new_class_body.append("# Instance Methods #\n# ---------------- #")
-                new_class_body.extend(other_functions)
-                new_class_body.extend(dependent_assignments)
-
-                # Replacing the class node's body with the new ordered body
-                class_node.body = new_class_body
-
             # If the docstring was added at the beginning, skip the node
             if (
                 docstring_added
@@ -335,6 +327,12 @@ class FunctionOrderingFormatter(BaseFormatter):
                         reordered_code_list.append(
                             "\n\n# --- Main --- #\n# ------------ #"
                         )
+                        
+            if isinstance(node, ast.ClassDef):
+                class_code = self._rearrange_class_internals(node, source_code)
+                reordered_code_list.append(class_code)
+            else:
+                reordered_code_list.append(code)
 
             last_function_type = current_function_type or last_function_type
 
