@@ -3,9 +3,9 @@
 import sys
 import argparse
 
-from .formatters import FunctionOrderingFormatter
+from .formatters import FunctionOrderingFormatter, ClassFunctionOrderingFormatter
 
-FORMATTERS = (FunctionOrderingFormatter,)
+FORMATTERS = (FunctionOrderingFormatter, ClassFunctionOrderingFormatter)
 
 
 def parse_args() -> argparse.Namespace:
