@@ -77,7 +77,9 @@ class ClassFunctionOrderingFormatter(BaseFormatter):
 
                 # 1. Add independent assignments
                 for inner_node in nodes_within_class:
-                    if isinstance(inner_node, ast.Assign) and inner_node.targets[0].id in independent_assignments:
+                    if (isinstance(inner_node, ast.Assign) 
+                            and isinstance(inner_node.targets[0], ast.Name) 
+                            and inner_node.targets[0].id in independent_assignments):
                         reordered_nodes.append(inner_node)
 
                 # 2. Add property-related functions
@@ -94,8 +96,11 @@ class ClassFunctionOrderingFormatter(BaseFormatter):
 
                 # 4. Add dependent assignments
                 for inner_node in nodes_within_class:
-                    if isinstance(inner_node, ast.Assign) and inner_node.targets[0].id in dependent_assignments:
+                    if (isinstance(inner_node, ast.Assign) 
+                            and isinstance(inner_node.targets[0], ast.Name)
+                            and inner_node.targets[0].id in dependent_assignments):
                         reordered_nodes.append(inner_node)
+
 
                 node.body = reordered_nodes
 
