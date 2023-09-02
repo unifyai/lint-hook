@@ -14,6 +14,76 @@ FILE_PATTERN = re.compile(
     r"(ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*"
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
 )
+def inside_class_dependency_graph(class_node):
+    graph = nx.DiGraph()
+    function_names = [
+        f.name for f in class_node.body if isinstance(f, ast.FunctionDef)
+    ]
+
+    for node in class_node.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    graph.add_node(target.id)
+                    right_side_names = extract_names_from_assignment(node)
+                    for name in right_side_names:
+                        if name in function_names:
+                            graph.add_edge(name, target.id)
+        elif isinstance(node, ast.FunctionDef):
+            graph.add_node(node.name)
+    return graph
+
+def sort_inside_class_nodes(class_node):
+    # Extract nodes
+    assigns = [node for node in class_node.body if isinstance(node, ast.Assign)]
+    functions = [node for node in class_node.body if isinstance(node, ast.FunctionDef)]
+
+    # Dependency graph
+    dependency_graph = inside_class_dependency_graph(class_node)
+    dependent_assignments = set(dependency_graph.nodes()) - set(
+        dependency_graph.edges()
+    )
+
+    def sort_key(node):
+        if isinstance(node, ast.Assign):
+            if node in dependent_assignments:
+                return (4, 0)
+            else:
+                return (1, 0)
+        if isinstance(node, ast.FunctionDef):
+            if any(isinstance(dec, ast.Attribute) and dec.attr in ("setter", "getter") for dec in node.decorator_list):
+                return (2, node.name)
+            elif any(isinstance(dec, ast.Name) and dec.id == "property" for dec in node.decorator_list):
+                return (2, node.name)
+            else:
+                return (3, node.name)
+        return (5, 0)
+
+    sorted_nodes = sorted(class_node.body, key=sort_key)
+    
+    # Add headers
+    sorted_body_with_headers = []
+
+    # Properties header
+    properties_nodes = [n for n in sorted_nodes if sort_key(n)[0] == 2]
+    if properties_nodes:
+        sorted_body_with_headers.append("# Properties #")
+        sorted_body_with_headers.append("# ---------- #")
+        sorted_body_with_headers.extend(properties_nodes)
+
+    # Instance methods header
+    instance_methods_nodes = [n for n in sorted_nodes if sort_key(n)[0] == 3]
+    if instance_methods_nodes:
+        sorted_body_with_headers.append("# Instance Methods #")
+        sorted_body_with_headers.append("# ---------------- #")
+        sorted_body_with_headers.extend(instance_methods_nodes)
+
+    # Remaining nodes
+    other_nodes = [n for n in sorted_nodes if n not in properties_nodes + instance_methods_nodes]
+    sorted_body_with_headers.extend(other_nodes)
+
+    return sorted_body_with_headers
+
 
 def class_assignment_build_dependency_graph(class_node):
     graph = nx.DiGraph()
@@ -167,6 +237,11 @@ class FunctionOrderingFormatter(BaseFormatter):
 
         tree = ast.parse(source_code)
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
+        
+        for _, node in nodes_with_comments:
+            if isinstance(node, ast.ClassDef):
+                sorted_body = sort_inside_class_nodes(node)
+                node.body = sorted_body
 
         # Dependency graph for class inheritance
         class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
