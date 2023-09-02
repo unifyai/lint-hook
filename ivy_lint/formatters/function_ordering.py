@@ -348,7 +348,10 @@ class FunctionOrderingFormatter(BaseFormatter):
 
                 # Sort and reformat class content
                 class_body_sorted = sorted(node.body, key=lambda x: class_inner_sort_key(getattr(x, 'name', 'unknown')))
-                class_code = [ast.dump(n) for n in class_body_sorted]
+                class_body_with_comments = self._extract_all_nodes_with_comments(class_node, source_code)
+                class_body_sorted = sorted(class_body_with_comments, key=class_sort_key)
+                class_code = [code for code, _ in class_body_sorted]
+
                 
                 # Insert property and method headers
                 i = 0
