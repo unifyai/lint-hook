@@ -18,8 +18,6 @@ FILE_PATTERN = re.compile(
 
 def class_build_dependency_graph(nodes_with_comments):
     graph = nx.DiGraph()
-    in_class_dependency = {}  # Dictionary to hold dependencies within each class
-    
     for _, node in nodes_with_comments:
         if isinstance(node, ast.ClassDef):
             graph.add_node(node.name)
@@ -28,21 +26,7 @@ def class_build_dependency_graph(nodes_with_comments):
                     graph.add_node(base.id)
                 if isinstance(base, ast.Name):
                     graph.add_edge(base.id, node.name)
-
-            # Extract assignments and methods from the class
-            assignments, methods = [], []
-            for member in node.body:
-                if isinstance(member, ast.FunctionDef):
-                    methods.append(member)
-                elif isinstance(member, ast.Assign):
-                    assignments.append(member)
-
-            in_class_dependency[node.name] = {
-                'assignments': assignments,
-                'methods': methods
-            }
-    
-    return graph, in_class_dependency
+    return graph
 
 
 def contains_any_name(code: str, names: List[str]) -> bool:
@@ -154,6 +138,79 @@ class FunctionOrderingFormatter(BaseFormatter):
             for node in tree.body
         ]
 
+    def is_function_a_property(func_node: ast.FunctionDef) -> bool:
+        for decorator in func_node.decorator_list:
+            if isinstance(decorator, ast.Attribute) and decorator.attr in {'setter', 'getter'}:
+                return True
+            if isinstance(decorator, ast.Name) and decorator.id == "property":
+                return True
+        return False
+
+    def internal_class_dependency_graph(nodes):
+        graph = nx.DiGraph()
+        for node in nodes:
+            if isinstance(node, ast.FunctionDef):
+                function_name = node.name
+                graph.add_node(function_name)
+
+                # Capture dependencies from assignments to functions
+                if any(isinstance(child, ast.Name) for child in ast.walk(node)):
+                    for child in ast.walk(node):
+                        if isinstance(child, ast.Name) and child.id != function_name and graph.has_node(child.id):
+                            graph.add_edge(child.id, function_name)
+
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        graph.add_node(target.id)
+
+        for node in nodes:
+            if isinstance(node, ast.Assign):
+                assigned_names = extract_names_from_assignment(node)
+                for name in assigned_names:
+                    if graph.has_node(name):
+                        for target in node.targets:
+                            if isinstance(target, ast.Name):
+                                graph.add_edge(name, target.id)
+
+        return graph
+
+    def sort_class_contents(class_node, source_code: str):
+        nodes = class_node.body
+
+        # Extract class internal assignments and functions
+        assignments = [node for node in nodes if isinstance(node, ast.Assign)]
+        functions = [node for node in nodes if isinstance(node, ast.FunctionDef)]
+
+        independent_assignments = [
+            node for node in assignments if not any(
+                isinstance(child, ast.Name) for child in ast.walk(node)
+            )
+        ]
+
+        properties = sorted([node for node in functions if is_function_a_property(node)], key=lambda x: x.name)
+
+        other_functions = sorted([node for node in functions if not is_function_a_property(node)], key=lambda x: x.name)
+
+        graph = internal_class_dependency_graph(nodes)
+        dependent_assignments = list(
+            set(graph.nodes()) - set(graph.edges()) - set([f.name for f in other_functions])
+        )
+
+        # Combine in the desired order
+        class_body = independent_assignments + properties + other_functions + dependent_assignments
+
+        # Inject headers
+        if properties:
+            properties_header_index = class_body.index(properties[0])
+            class_body.insert(properties_header_index, "# Properties #\n# ---------- #")
+
+        if other_functions:
+            methods_header_index = class_body.index(other_functions[0])
+            class_body.insert(methods_header_index, "# Instance Methods #\n# ---------------- #")
+
+        return class_body
+    
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
         source_code = self._remove_existing_headers(source_code)
 
@@ -161,7 +218,7 @@ class FunctionOrderingFormatter(BaseFormatter):
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, source_code)
 
         # Dependency graph for class inheritance
-        class_dependency_graph, in_class_dependencies = class_build_dependency_graph(nodes_with_comments)
+        class_dependency_graph = class_build_dependency_graph(nodes_with_comments)
         sorted_classes = list(nx.topological_sort(class_dependency_graph))
 
         # Dependency graph for assignments
@@ -198,16 +255,6 @@ class FunctionOrderingFormatter(BaseFormatter):
                     name in right_side_names for name in function_and_class_names
                 )
             return False
-
-        def get_decorator_name(decorator):
-            if isinstance(decorator, ast.Name):
-                return decorator.id
-            elif isinstance(decorator, ast.Call):
-                # In the case of a decorator like @decorator_name(arg)
-                # Return the name of the decorator, if it's a simple function call
-                if isinstance(decorator.func, ast.Name):
-                    return decorator.func.id
-            return None
 
         def sort_key(item):
             node = item[1]
@@ -249,25 +296,6 @@ class FunctionOrderingFormatter(BaseFormatter):
                     return (1, 0, target_str)
 
             if isinstance(node, ast.ClassDef):
-                if isinstance(node, ast.ClassDef):
-                    # When we encounter a class node, we modify its body to order it as per the new rules
-                    assignments, methods = in_class_dependencies.get(node.name, {}).get('assignments', []), in_class_dependencies.get(node.name, {}).get('methods', [])
-                    
-                    # Sort assignments
-                    independent_assignments = [a for a in assignments if not contains_any_name(ast.dump(a), [m.name for m in methods])]
-                    dependent_assignments = [a for a in assignments if contains_any_name(ast.dump(a), [m.name for m in methods])]
-
-                    # Sort methods
-                    property_methods = sorted(
-                        [m for m in methods if any(
-                            get_decorator_name(d).endswith('setter') or get_decorator_name(d).endswith('getter') for d in m.decorator_list if get_decorator_name(d)
-                        )],
-                        key=lambda x: x.name
-                    )
-                    other_methods = sorted([m for m in methods if m not in property_methods], key=lambda x: x.name)
-
-                    # Rebuild the class body
-                    node.body = independent_assignments + [ast.parse("# Properties #\n# ---------- #").body[0]] + property_methods + [ast.parse("# Instance Methods #\n# ---------------- #").body[0]] + other_methods + dependent_assignments
                 try:
                     return (2, sorted_classes.index(node.name), node.name)
                 except ValueError:
@@ -330,6 +358,13 @@ class FunctionOrderingFormatter(BaseFormatter):
                         )
 
             last_function_type = current_function_type or last_function_type
+            
+            if isinstance(node, ast.ClassDef):
+                class_contents = sort_class_contents(node, source_code)
+                reordered_code_list.append("\n".join([ast.dump(item) for item in class_contents]))
+            else:
+                reordered_code_list.append(code)
+
 
             if isinstance(node, ast.Assign):
                 if prev_was_assignment:
