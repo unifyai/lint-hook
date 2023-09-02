@@ -214,7 +214,8 @@ class FunctionOrderingFormatter(BaseFormatter):
         
         # combine them to get the resulting code
         return "\n\n".join([c[0] for c in reordered_content if c[0]])
-
+    
+    @staticmethod
     def reorder_classes_in_code(source_code: str) -> str:
         tree = ast.parse(source_code)
         for node in tree.body:
@@ -383,7 +384,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                 prev_was_assignment = False
 
         reordered_code = "\n".join(reordered_code_list).strip()
-        reordered_code = self.reorder_classes_in_code(reordered_code)
+        reordered_code = reorder_classes_in_code(reordered_code)
         if not reordered_code.endswith("\n"):
             reordered_code += "\n"
 
