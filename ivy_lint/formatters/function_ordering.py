@@ -383,15 +383,32 @@ class ExtendedFunctionOrderingFormatter(FunctionOrderingFormatter):
         return reordered_nodes
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
+        # Original reordering without class member specifics
         source_code = super()._rearrange_functions_and_classes(source_code)
         tree = ast.parse(source_code)
 
-        # Iterate through the tree to rearrange class members
-        new_body = []
-        for node in tree.body:
-            if isinstance(node, ast.ClassDef):
-                node.body = self._rearrange_class_members(node)
-            new_body.append(node)
+        # For reconstructing the reordered code
+        reordered_code_list = []
 
-        tree.body = new_body
-        return ast.dump(tree)
+        # Iterate through the tree to rearrange class members
+        for node in tree.body:
+            # If it's a class node, rearrange its members
+            if isinstance(node, ast.ClassDef):
+                # Get the reordered class members
+                reordered_class_members = self._rearrange_class_members(node)
+                
+                # Add the class definition header to the code list
+                reordered_code_list.append(f"class {node.name}:")
+
+                # Add each member's code to the code list
+                for member in reordered_class_members:
+                    member_code, _ = self._extract_node_with_leading_comments(member, source_code)
+                    reordered_code_list.append("    " + member_code.replace("\n", "\n    "))
+
+            # If it's not a class node, add its code to the code list as is
+            else:
+                node_code, _ = self._extract_node_with_leading_comments(node, source_code)
+                reordered_code_list.append(node_code)
+
+        # Return the fully reordered code as a string
+        return "\n".join(reordered_code_list)
