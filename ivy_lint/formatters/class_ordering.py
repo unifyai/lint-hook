@@ -4,6 +4,8 @@ import networkx as nx
 import sys
 from typing import List
 
+from ivy_lint.formatters import BaseFormatter
+
 FILE_PATTERN = re.compile(
     r"(ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*"
     r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
