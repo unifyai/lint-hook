@@ -51,56 +51,56 @@ def build_dependency_graph_for_class(class_node: ast.ClassDef) -> nx.DiGraph:
 
 class ClassFunctionOrderingFormatter(BaseFormatter):
 
-    def rearrange_class_functions(self, class_node: ast.ClassDef) -> str:
-        graph = build_dependency_graph_for_class(class_node)
-        
+    def _rearrange_inside_class(self, class_node: ast.ClassDef, source_code: str) -> str:
+        nodes_with_comments = self._extract_all_nodes_with_comments(class_node, source_code)
+
+        assignment_dependency_graph = assignment_build_dependency_graph(nodes_with_comments)
+
         independent_assignments = [
-            code for code, node in class_node.body 
-            if isinstance(node, ast.Assign) and node.targets[0].id not in graph
+            code for code, node in nodes_with_comments if isinstance(node, ast.Assign) and not _is_assignment_dependent_on_assignment(node)
         ]
 
-        property_methods = [
-            code for code, node in class_node.body 
-            if isinstance(node, ast.FunctionDef) 
-            and any(
-                is_property_decorator(d) 
-                or PROPERTY_DECORATORS["getter"].match(ast.dump(d)) 
-                or PROPERTY_DECORATORS["setter"].match(ast.dump(d))
-                for d in node.decorator_list
+        property_functions = [
+            code for code, node in nodes_with_comments if isinstance(node, ast.FunctionDef) and any(
+                isinstance(decorator, ast.Attribute) and decorator.attr in ["setter", "getter"]
+                for decorator in node.decorator_list
             )
         ]
 
-        instance_methods = [
-            code for code, node in class_node.body 
-            if isinstance(node, ast.FunctionDef) 
-            and node not in property_methods
+        other_functions = [
+            code for code, node in nodes_with_comments if isinstance(node, ast.FunctionDef) and not any(
+                isinstance(decorator, ast.Attribute) and decorator.attr in ["setter", "getter"]
+                for decorator in node.decorator_list
+            )
         ]
 
         dependent_assignments = [
-            code for code, node in class_node.body 
-            if isinstance(node, ast.Assign) and node.targets[0].id in graph
+            code for code, node in nodes_with_comments if isinstance(node, ast.Assign) and _is_assignment_dependent_on_assignment(node)
         ]
 
-        reordered_class_body = independent_assignments
-        if property_methods:
-            reordered_class_body.append("# Properties #")
-            reordered_class_body.append("# ---------- #")
-            reordered_class_body.extend(sorted(property_methods, key=lambda x: x.name))
-        
-        if instance_methods:
-            reordered_class_body.append("# Instance Methods #")
-            reordered_class_body.append("# ---------------- #")
-            reordered_class_body.extend(sorted(instance_methods, key=lambda x: x.name))
-        
-        reordered_class_body.extend(dependent_assignments)
-
-        return ast.ClassDef(
-            name=class_node.name,
-            bases=class_node.bases,
-            keywords=class_node.keywords,
-            body=reordered_class_body,
-            decorator_list=class_node.decorator_list
+        return '\n'.join(
+            independent_assignments +
+            ["\n# Properties #", "# ---------- #"] + property_functions +
+            ["\n# Instance Methods #", "# ---------------- #"] + other_functions +
+            dependent_assignments
         )
+
+    def _rearrange_functions_and_classes(self, source_code: str) -> str:
+        tree = ast.parse(source_code)
+        reordered_code_list = []
+
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                class_code = self._rearrange_inside_class(node, source_code)
+                reordered_code_list.append(class_code)
+            else:
+                reordered_code_list.append(self._extract_node_with_leading_comments(node, source_code)[0])
+
+        reordered_code = '\n'.join(reordered_code_list).strip()
+        if not reordered_code.endswith("\n"):
+            reordered_code += "\n"
+
+        return reordered_code
 
     def _format_file(self, filename: str) -> bool:
         if FILE_PATTERN.match(filename) is None:
@@ -120,8 +120,7 @@ class ClassFunctionOrderingFormatter(BaseFormatter):
 
         except SyntaxError:
             print(
-                f"Error: The provided file '{filename}' does not contain valid Python"
-                " code."
+                f"Error: The provided file '{filename}' does not contain valid Python code."
             )
             return False
-        
+            
