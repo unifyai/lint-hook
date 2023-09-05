@@ -3,9 +3,9 @@
 import sys
 import argparse
 
-from .formatters import FunctionOrderingFormatter, DocsFormatter
+from .formatters import FunctionOrderingFormatter, DocstringFormatter
 
-FORMATTERS = (DocsFormatter, 
+FORMATTERS = (DocstringFormatter, 
             #   FunctionOrderingFormatter,
               )
 

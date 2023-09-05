@@ -4,4 +4,4 @@ from .base_formatter import BaseFormatter
 from .base_docstring import BaseDocstringFormatter
 from .ivy_array import IvyArrayDocstringFormatter
 from .function_ordering import FunctionOrderingFormatter
-from .docs_formatter import DocsFormatter
+from .docs_formatter import DocstringFormatter
