@@ -1,55 +1,64 @@
 import re
+import ast
+from typing import List
 from ivy_lint.formatters import BaseFormatter
 
-EXAMPLE_HEADER_PATTERN = re.compile(r'Functional Examples\n-{2,}')
-BACKTICKS_PATTERN = re.compile(r'```')
-EXAMPLES_SPACING_PATTERN = re.compile(r'(Examples\n-{2,}\n)([^`]*?)(\n\n|\Z)', re.DOTALL)
+FILE_PATTERN = re.compile(r'\.py$')  # This matches Python files by their extension
 
-class DocstringFormatter(BaseFormatter):
-    
-    def _format_examples_header(self, source_code: str) -> str:
-        return EXAMPLE_HEADER_PATTERN.sub('Examples\n--------', source_code)
 
-    def _format_examples_spacing(self, source_code: str) -> str:
-        def fix_spacing(match):
+class DocsFormatter(BaseFormatter):
+    """Formatter for Python docstrings following the provided logic."""
+
+    def _format_file(self, filename: str) -> bool:
+        if FILE_PATTERN.match(filename) is None:
+            return False
+
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                original_code = f.read()
+
+            if not original_code.strip():
+                return False
+
+            formatted_code = self._apply_format_rules(original_code)
+
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(formatted_code)
+
+            return original_code != formatted_code
+
+        except SyntaxError:
+            print(
+                f"Error: The provided file '{filename}' does not contain valid Python"
+                " code."
+            )
+            return False
+
+    def _apply_format_rules(self, content: str) -> str:
+        # 1. Replace 'Functional Examples' with 'Examples'
+        content = content.replace('Functional Examples', 'Examples')
+
+        # 2. Fix spaces in examples for sphinx
+        example_pattern = re.compile(r'(Examples\n-{2,}\n)([^`]*?)(\n\n|\Z)', re.DOTALL)
+
+        def fix_example_spacing(match):
             example = match.group(2)
+            # Replace multiple blank lines with a single blank line
             example = re.sub(r'\n{3,}', '\n\n', example)
+            # Ensure only one blank line before and after each example
             example = re.sub(r'\n(?=[^ \n])', '\n\n', example)
             example = re.sub(r'(?<=[^ \n])\n', '\n\n', example)
             return 'Examples\n--------\n' + example + match.group(3)
 
-        return EXAMPLES_SPACING_PATTERN.sub(fix_spacing, source_code)
+        content = example_pattern.sub(fix_example_spacing, content)
 
-    def _format_remove_backticks(self, source_code: str) -> str:
-        def remove_ticks(match):
+        # 3. Remove backticks from examples
+        def remove_backticks(match):
             example = match.group(2)
-            example = BACKTICKS_PATTERN.sub('', example)
+            # Remove backticks from the matched example
+            example = example.replace('```', '')
             return 'Examples\n--------\n' + example + match.group(3)
 
-        return EXAMPLES_SPACING_PATTERN.sub(remove_ticks, source_code)
-        
-    def _format_file(self, filename: str) -> bool:
-        try:
-            with open(filename, 'r', encoding="utf-8") as f:
-                source_code = f.read()
+        content = example_pattern.sub(remove_backticks, content)
 
-            if not source_code.strip():
-                return False
-
-            source_code = self._format_examples_header(source_code)
-            source_code = self._format_examples_spacing(source_code)
-            source_code = self._format_remove_backticks(source_code)
-
-            with open(filename, 'w', encoding="utf-8") as f:
-                f.write(source_code)
-
-        except Exception as e:
-            print(f"Error while formatting '{filename}': {e}")
-            return False
-        return True
-
-    def format(self) -> bool:
-        changed = False
-        for filename in self.filenames:
-            changed = self._format_file(filename) or changed
-        return changed
+        return content
