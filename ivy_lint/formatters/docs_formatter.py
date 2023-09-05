@@ -8,7 +8,7 @@ class DocstringFormatter(BaseFormatter):
     # Patterns to identify and correct issues
     INCORRECT_EXAMPLES_PATTERN = re.compile(r'Functional Examples(?=:)', re.IGNORECASE)
     EXAMPLES_BLANK_SPACE_PATTERN = re.compile(r'(?<=Examples:)\n*?(>>>[^\n]*?\n[^\n]*?)\n*?(?=\w|$)', re.DOTALL)
-    BACKTICKS_PATTERN = re.compile(r'(?<=Examples:.*?)(```\s*?>>>.*?```)', re.DOTALL)
+    BACKTICKS_PATTERN = re.compile(r'(Examples:.*?)(```\s*?>>>.*?```)', re.DOTALL)
     
     def _fix_examples_title(self, content: str) -> str:
         """
@@ -33,7 +33,8 @@ class DocstringFormatter(BaseFormatter):
         Remove backticks around examples.
         """
         def repl(match):
-            return match.group(1).replace('```', '').strip()
+            return match.group(1) + match.group(2).replace('```', '').strip()
+
         
         return self.BACKTICKS_PATTERN.sub(repl, content)
 
