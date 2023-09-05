@@ -6,9 +6,6 @@ from ivy_lint.formatters import BaseFormatter
 EXAMPLES_PATTERN = re.compile(
     r"(Examples\n[-]{2,}\n\n)(.*?)(\n\n|$)", re.DOTALL
 )
-MULTI_EXAMPLE_PATTERN = re.compile(
-    r"(>>>[^\n]+?\n)([^\n]+?)(\n\n|>>>|$)", re.DOTALL
-)
 
 class DocsFormatter(BaseFormatter):
 
@@ -22,12 +19,31 @@ class DocsFormatter(BaseFormatter):
         # Correcting the entire Examples section
         def fix_examples_section(match):
             examples_section = match.group(2)
-
-            # Ensure correct spacing between examples
-            examples_section = MULTI_EXAMPLE_PATTERN.sub(
-                lambda m: m.group(1) + "\n" + m.group(2) + "\n", examples_section)
             
-            return match.group(1) + examples_section + "\n"
+            # Split the section into lines
+            lines = examples_section.split('\n')
+            in_code_block = False
+            new_lines = []
+
+            for line in lines:
+                # Detect the start or continuation of a code block
+                if line.strip().startswith(">>>"):
+                    if not in_code_block:
+                        new_lines.append("")  # Add blank line before starting a new block
+                        in_code_block = True
+                # Detect the end of a code block
+                elif in_code_block and not line.strip():
+                    in_code_block = False
+                    new_lines.append(line)  # Keep the existing blank line
+                    continue
+
+                new_lines.append(line)
+
+            # If it ends while still in a code block, ensure it finishes with a blank line
+            if in_code_block:
+                new_lines.append("")
+
+            return match.group(1) + '\n'.join(new_lines) + "\n"
 
         # Adjust the examples section
         docstring = EXAMPLES_PATTERN.sub(fix_examples_section, docstring)
