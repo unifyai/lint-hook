@@ -5,7 +5,9 @@ import argparse
 
 from .formatters import FunctionOrderingFormatter, DocsFormatter
 
-FORMATTERS = (DocsFormatter, FunctionOrderingFormatter,)
+FORMATTERS = (DocsFormatter, 
+            #   FunctionOrderingFormatter,
+              )
 
 
 def parse_args() -> argparse.Namespace:
