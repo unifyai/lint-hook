@@ -76,6 +76,7 @@ class DocsFormatter(BaseFormatter):
 
         # Check if any changes have been made.
         if corrected_code == original_code:
+            print(f'No changes made to {filename}')
             return False
 
         with open(filename, 'w', encoding='utf-8') as f:
