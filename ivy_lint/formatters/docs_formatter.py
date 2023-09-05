@@ -1,96 +1,55 @@
 import re
-import ast
-from typing import List
 from ivy_lint.formatters import BaseFormatter
 
-EXAMPLES_PATTERN = re.compile(r"(Examples\n[-]{2,}\n\n)(.*?)(\n\n|$)", re.DOTALL)
+EXAMPLE_HEADER_PATTERN = re.compile(r'Functional Examples\n-{2,}')
+BACKTICKS_PATTERN = re.compile(r'```')
+EXAMPLES_SPACING_PATTERN = re.compile(r'(Examples\n-{2,}\n)([^`]*?)(\n\n|\Z)', re.DOTALL)
 
-class DocsFormatter(BaseFormatter):
-    """Formatter for docstrings."""
+class DocstringFormatter(BaseFormatter):
+    
+    def _format_examples_header(self, source_code: str) -> str:
+        return EXAMPLE_HEADER_PATTERN.sub('Examples\n--------', source_code)
 
-    @staticmethod
-    def correct_docstring(docstring: str) -> str:
-        docstring = re.sub(r'Functional Examples\n-{3,}', 'Examples\n--------', docstring)
-        docstring = EXAMPLES_PATTERN.sub(DocsFormatter._fix_examples_section, docstring)
-        return docstring
+    def _format_examples_spacing(self, source_code: str) -> str:
+        def fix_spacing(match):
+            example = match.group(2)
+            example = re.sub(r'\n{3,}', '\n\n', example)
+            example = re.sub(r'\n(?=[^ \n])', '\n\n', example)
+            example = re.sub(r'(?<=[^ \n])\n', '\n\n', example)
+            return 'Examples\n--------\n' + example + match.group(3)
 
-    @staticmethod
-    def _fix_examples_section(match):
-        """Reformat the Examples section of a docstring."""
-        examples_section = match.group(2)
-        lines = examples_section.split('\n')
+        return EXAMPLES_SPACING_PATTERN.sub(fix_spacing, source_code)
+
+    def _format_remove_backticks(self, source_code: str) -> str:
+        def remove_ticks(match):
+            example = match.group(2)
+            example = BACKTICKS_PATTERN.sub('', example)
+            return 'Examples\n--------\n' + example + match.group(3)
+
+        return EXAMPLES_SPACING_PATTERN.sub(remove_ticks, source_code)
         
-        in_code_block = False
-        new_lines = []
-
-        for line in lines:
-            # Remove backticks from examples
-            line = line.replace('```', '')
-            
-            if line.strip().startswith(">>>"):
-                if not in_code_block:
-                    new_lines.append("")
-                    in_code_block = True
-            elif in_code_block and not line.strip():
-                in_code_block = False
-                new_lines.append(line)
-                continue
-
-            new_lines.append(line)
-
-        if in_code_block:
-            new_lines.append("")
-
-        return match.group(1) + '\n'.join(new_lines) + "\n"
-
-    def _extract_docstrings(self, tree: ast.AST) -> List[str]:
-        """Extract all docstrings from an AST tree."""
-        docstrings = []
-
-        for node in ast.walk(tree):
-            # Check if the node is one of the constructs that can have a docstring
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
-                docstring = ast.get_docstring(node)
-                if docstring:
-                    docstrings.append(docstring)
-        
-        return docstrings
-
-    def _replace_docstrings(self, source_code: str) -> str:
-        """Replace docstrings in the provided source code with corrected versions."""
-        tree = ast.parse(source_code)
-        docstring_replacements = []
-
-        # For each node, if it has a docstring, get its exact span
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
-                docstring = ast.get_docstring(node, clean=False)
-                if docstring:
-                    # Calculate the start of the docstring
-                    start_byte_offset = node.body[0].col_offset
-                    
-                    # We include the node's col_offset to handle nested structures
-                    start_index = source_code.rfind(docstring, 0, node.body[0].end_col_offset + node.col_offset)
-                    
-                    docstring_replacements.append((start_index, start_index + len(docstring), docstring))
-                    
-        # Apply replacements in reverse order to avoid shifting positions
-        for start, end, doc in reversed(docstring_replacements):
-            corrected = DocsFormatter.correct_docstring(doc)
-            source_code = source_code[:start] + corrected + source_code[end:]
-
-        return source_code
-
     def _format_file(self, filename: str) -> bool:
-        """Format the file by correcting its docstrings."""
-        with open(filename, 'r', encoding='utf-8') as f:
-            original_code = f.read()
+        try:
+            with open(filename, 'r', encoding="utf-8") as f:
+                source_code = f.read()
 
-        corrected_code = self._replace_docstrings(original_code)
+            if not source_code.strip():
+                return False
 
-        if corrected_code != original_code:
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.write(corrected_code)
-            return True
+            source_code = self._format_examples_header(source_code)
+            source_code = self._format_examples_spacing(source_code)
+            source_code = self._format_remove_backticks(source_code)
 
-        return False
+            with open(filename, 'w', encoding="utf-8") as f:
+                f.write(source_code)
+
+        except Exception as e:
+            print(f"Error while formatting '{filename}': {e}")
+            return False
+        return True
+
+    def format(self) -> bool:
+        changed = False
+        for filename in self.filenames:
+            changed = self._format_file(filename) or changed
+        return changed
