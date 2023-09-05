@@ -3,6 +3,11 @@ import ast
 from typing import List
 from ivy_lint.formatters import BaseFormatter
 
+FILE_PATTERN = re.compile(
+    r"(ivy/functional/frontends/(?!.*(?:config\.py|__init__\.py)$).*"
+    r"|ivy_tests/test_ivy/(?!.*(?:__init__\.py|conftest\.py|helpers/.*|test_frontends/config/.*$)).*)"
+)
+
 EXAMPLES_PATTERN = re.compile(
     r"(Examples\n[-]{2,}\n\n)(.*?)(\n\n|$)", re.DOTALL
 )
@@ -49,8 +54,11 @@ class DocsFormatter(BaseFormatter):
         
         return source_code
 
-    def format_file(self, filename: str) -> bool:
+    def _format_file(self, filename: str) -> bool:
         """Format the file by correcting its docstrings."""
+        # if FILE_PATTERN.match(filename) is None:
+        #     return False
+
         with open(filename, 'r', encoding='utf-8') as f:
             original_code = f.read()
 
