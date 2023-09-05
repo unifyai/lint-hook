@@ -5,7 +5,7 @@ EXAMPLE_HEADER_PATTERN = re.compile(r'Functional Examples\n-{2,}')
 BACKTICKS_PATTERN = re.compile(r'```')
 EXAMPLES_SPACING_PATTERN = re.compile(r'(Examples\n-{2,}\n)([^`]*?)(\n\n|\Z)', re.DOTALL)
 
-class DocstringFormatter(BaseFormatter):
+class DocsFormatter(BaseFormatter):
     
     def _format_examples_header(self, source_code: str) -> str:
         return EXAMPLE_HEADER_PATTERN.sub('Examples\n--------', source_code)
