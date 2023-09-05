@@ -59,19 +59,28 @@ class DocsFormatter(BaseFormatter):
     def _replace_docstrings(self, source_code: str) -> str:
         """Replace docstrings in the provided source code with corrected versions."""
         tree = ast.parse(source_code)
-        docstrings = self._extract_docstrings(tree)
+        docstrings = [(node, ast.get_docstring(node)) for node in ast.walk(tree)
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module))
+                    and ast.get_docstring(node)]
 
-        offset_adjustment = 0
-        for doc in docstrings:
+        lines = source_code.splitlines(True)  # Keep the line endings
+
+        for node, doc in docstrings:
             corrected = self.correct_docstring(doc)
-
             if corrected != doc:
-                start = source_code.find(doc) + offset_adjustment
-                end = start + len(doc)
-                source_code = source_code[:start] + corrected + source_code[end:]
-                offset_adjustment += len(corrected) - len(doc)
-                
-        return source_code
+                start_lineno = node.lineno - 1
+                while not lines[start_lineno].strip().startswith('"""') and start_lineno < len(lines):
+                    start_lineno += 1
+
+                end_lineno = start_lineno
+                while not lines[end_lineno].strip().endswith('"""') and end_lineno < len(lines):
+                    end_lineno += 1
+
+                # Replace the docstring lines with the corrected lines
+                lines[start_lineno:end_lineno+1] = corrected.splitlines(True)
+
+        return ''.join(lines)
+
 
     def _format_file(self, filename: str) -> bool:
         """Format the file by correcting its docstrings."""
