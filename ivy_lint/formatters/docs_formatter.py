@@ -60,6 +60,7 @@ class DocsFormatter(BaseFormatter):
         docstrings = self._extract_docstrings_from_tree(tree)
         
         for doc in docstrings:
+            print(doc.s)
             corrected = self.correct_docstring(doc.s)
             source_code = source_code.replace(doc.s, corrected)
         
