@@ -3,9 +3,7 @@ import ast
 from typing import List
 from ivy_lint.formatters import BaseFormatter
 
-EXAMPLES_PATTERN = re.compile(
-    r"(Examples\n[-]{2,}\n\n)(.*?)(\n\n|$)", re.DOTALL
-)
+EXAMPLES_PATTERN = re.compile(r"(Examples\n[-]{2,}\n\n)(.*?)(\n\n|$)", re.DOTALL)
 
 class DocsFormatter(BaseFormatter):
     """Formatter for docstrings."""
@@ -26,6 +24,9 @@ class DocsFormatter(BaseFormatter):
         new_lines = []
 
         for line in lines:
+            # Remove backticks from examples
+            line = line.replace('```', '')
+            
             if line.strip().startswith(">>>"):
                 if not in_code_block:
                     new_lines.append("")
@@ -55,7 +56,6 @@ class DocsFormatter(BaseFormatter):
         
         return docstrings
 
-
     def _replace_docstrings(self, source_code: str) -> str:
         """Replace docstrings in the provided source code with corrected versions."""
         tree = ast.parse(source_code)
@@ -76,7 +76,7 @@ class DocsFormatter(BaseFormatter):
                     
         # Apply replacements in reverse order to avoid shifting positions
         for start, end, doc in reversed(docstring_replacements):
-            corrected = self.correct_docstring(doc)
+            corrected = DocsFormatter.correct_docstring(doc)
             source_code = source_code[:start] + corrected + source_code[end:]
 
         return source_code
