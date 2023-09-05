@@ -59,28 +59,27 @@ class DocsFormatter(BaseFormatter):
     def _replace_docstrings(self, source_code: str) -> str:
         """Replace docstrings in the provided source code with corrected versions."""
         tree = ast.parse(source_code)
-        docstrings = [(node, ast.get_docstring(node)) for node in ast.walk(tree)
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module))
-                    and ast.get_docstring(node)]
+        docstring_replacements = []
 
-        lines = source_code.splitlines(True)  # Keep the line endings
-
-        for node, doc in docstrings:
+        # For each node, if it has a docstring, get its exact span
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
+                docstring = ast.get_docstring(node, clean=False)
+                if docstring:
+                    # Calculate the start of the docstring
+                    start_byte_offset = node.body[0].col_offset
+                    
+                    # We include the node's col_offset to handle nested structures
+                    start_index = source_code.rfind(docstring, 0, node.body[0].end_col_offset + node.col_offset)
+                    
+                    docstring_replacements.append((start_index, start_index + len(docstring), docstring))
+                    
+        # Apply replacements in reverse order to avoid shifting positions
+        for start, end, doc in reversed(docstring_replacements):
             corrected = self.correct_docstring(doc)
-            if corrected != doc:
-                start_lineno = node.lineno - 1
-                while not lines[start_lineno].strip().startswith('"""') and start_lineno < len(lines):
-                    start_lineno += 1
+            source_code = source_code[:start] + corrected + source_code[end:]
 
-                end_lineno = start_lineno
-                while not lines[end_lineno].strip().endswith('"""') and end_lineno < len(lines):
-                    end_lineno += 1
-
-                # Replace the docstring lines with the corrected lines
-                lines[start_lineno:end_lineno+1] = corrected.splitlines(True)
-
-        return ''.join(lines)
-
+        return source_code
 
     def _format_file(self, filename: str) -> bool:
         """Format the file by correcting its docstrings."""
