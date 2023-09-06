@@ -9,8 +9,7 @@ def format_docstring(doc):
     # Rename "Functional Examples" to "Examples" and remove old underline
     doc = re.sub(r'(\s*)Functional Examples\s*\n-*', r'\1Examples\n\1--------', doc)
     
-    # Remove any extra underline if it happens to appear after "Examples"
-    doc = re.sub(r'Examples\n--------\s*-*', 'Examples\n--------', doc)
+    doc = re.sub(r'(\s*Examples\n\1--------)\s*\n\1-*', r'\1', doc)
     
     # Ensure there's an empty line before the "Examples" header if it's preceded by another section
     doc = re.sub(r'([^\n])\n(\s*)Examples\n\2--------', r'\1\n\n\2Examples\n\2--------', doc)
