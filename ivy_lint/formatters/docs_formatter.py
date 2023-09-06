@@ -13,8 +13,8 @@ def format_docstring(doc):
     # Correct formatting if "Examples" is improperly formatted
     doc = re.sub(r'(\s*)Examples\n\1-*\n\1-*', r'\1Examples\n\1--------', doc)
 
-    # If there is no newline after "Examples" section header, add it
-    doc = re.sub(r'(\s*)Examples\n\1--------([^\n])', r'\1Examples\n\1--------\n\2', doc)
+    # Ensure newline and correct indentation after "Examples" section header
+    doc = re.sub(r'(\s*)Examples\n\1--------\s*\n', r'\1Examples\n\1--------\n\1', doc)
 
     # Identify code blocks
     lines = doc.split('\n')
