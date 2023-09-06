@@ -6,12 +6,10 @@ from ivy_lint.formatters import BaseFormatter
 
 def format_docstring(doc):
     """Formats a single docstring."""
-    # Rename "Functional Examples" to "Examples" and remove old underline
-    doc = re.sub(r'(\s*)Functional Examples\s*\n-*', r'\1Examples\n\1--------', doc)
+    doc = re.sub(r'(\s*)Functional Examples', r'\1Examples', doc)
     
-    doc = re.sub(r'(\s*Examples\n\1--------)\s*\n\1-*', r'\1', doc)
+    doc = re.sub(r'(\s*)Examples\n\1--------\s*\n\1-*', r'\1Examples\n\1--------', doc)
     
-    # Ensure there's an empty line before the "Examples" header if it's preceded by another section
     doc = re.sub(r'([^\n])\n(\s*)Examples\n\2--------', r'\1\n\n\2Examples\n\2--------', doc)
     
     # Identify code blocks
