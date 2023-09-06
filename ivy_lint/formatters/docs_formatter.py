@@ -1,45 +1,71 @@
 import re
+import ast
+
 from ivy_lint.formatters import BaseFormatter
 
 
+def format_docstring(doc):
+    """Formats a single docstring."""
+    # Rename "Functional Examples" to "Examples"
+    doc = re.sub(r'\s*Functional Examples\s*', 'Examples', doc)
+    doc = re.sub(r'Examples\s*-+', 'Examples\n--------', doc)
+    
+    # Ensure there's an empty line before the "Examples" header
+    doc = re.sub(r'([^\n])\nExamples\n--------', r'\1\n\nExamples\n--------', doc)
+    
+    # Identify code blocks
+    lines = doc.split('\n')
+    is_codeblock = False
+    codeblock_start_lines = set()  # This will store indices of lines which start a code block
+
+    for idx, line in enumerate(lines):
+        stripped_line = line.strip()
+
+        if not is_codeblock and stripped_line.startswith('>>>'):
+            is_codeblock = True
+            codeblock_start_lines.add(idx)
+        elif is_codeblock and (not stripped_line or not stripped_line.startswith(('>>>', '...'))):
+            is_codeblock = False
+    
+    # Add blank lines before code blocks
+    formatted_lines = []
+    for idx, line in enumerate(lines):
+        if idx in codeblock_start_lines and formatted_lines and formatted_lines[-1].strip():  # Insert blank line before code block
+            formatted_lines.append('')
+        formatted_lines.append(line)
+            
+    return '\n'.join(formatted_lines)
+
+def format_all_docstrings(python_code):
+    """Extracts all docstrings from the given Python code, formats them, and replaces the original ones with the formatted versions."""
+    tree = ast.parse(python_code)
+    replacements = {}
+
+    # Extract all docstrings from the AST tree
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef, ast.AsyncFor)):
+            original_docstring = ast.get_docstring(node, clean=False)
+            if original_docstring:
+                formatted_docstring = format_docstring(original_docstring)
+                if original_docstring != formatted_docstring:  # Only add if there are changes
+                    replacements[original_docstring] = formatted_docstring
+
+    # Replace the docstrings safely
+    for original, formatted in replacements.items():
+        python_code = python_code.replace(original, formatted, 1)  # Only replace once to be safe
+    
+    return python_code
+
 class DocstringFormatter(BaseFormatter):
-    """Formatter for correcting docstrings following ivy style."""
-    
-    # Patterns to identify and correct issues
-    INCORRECT_EXAMPLES_PATTERN = re.compile(r'Functional Examples(?=:)', re.IGNORECASE)
-    EXAMPLES_BLANK_SPACE_PATTERN = re.compile(r'(?<=Examples:)\n*?(>>>[^\n]*?\n[^\n]*?)\n*?(?=\w|$)', re.DOTALL)
-    BACKTICKS_PATTERN = re.compile(r'(Examples:.*?)(```\s*?>>>.*?```)', re.DOTALL)
-    
-    def _fix_examples_title(self, content: str) -> str:
-        return self.INCORRECT_EXAMPLES_PATTERN.sub("Examples", content)
-    
-    def _fix_examples_format_for_sphinx(self, content: str) -> str:
-        def repl(match):
-            example = match.group(1).strip()
-            example = re.sub(r'\n+', '\n', example)  # Remove multiple newlines
-            return f'\n\n{example}\n'
-        
-        return self.EXAMPLES_BLANK_SPACE_PATTERN.sub(repl, content)
-
-    def _remove_backticks_from_examples(self, content: str) -> str:
-        def repl(match):
-            return match.group(1) + match.group(2).replace('```', '').strip()
-
-        
-        return self.BACKTICKS_PATTERN.sub(repl, content)
-
     def _format_file(self, filename: str) -> bool:
-        with open(filename, 'r', encoding='utf-8') as f:
-            original_content = f.read()
+        with open(filename, 'r') as file:
+            original_content = file.read()
 
-        formatted_content = self._fix_examples_title(original_content)
-        formatted_content = self._fix_examples_format_for_sphinx(formatted_content)
-        formatted_content = self._remove_backticks_from_examples(formatted_content)
+        formatted_content = format_all_docstrings(original_content)
 
-        # Check if the file was changed
-        if formatted_content != original_content:
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.write(formatted_content)
+        if original_content != formatted_content:
+            with open(filename, 'w') as file:
+                file.write(formatted_content)
             return True
 
         return False
