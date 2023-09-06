@@ -11,16 +11,9 @@ class DocstringFormatter(BaseFormatter):
     BACKTICKS_PATTERN = re.compile(r'(Examples:.*?)(```\s*?>>>.*?```)', re.DOTALL)
     
     def _fix_examples_title(self, content: str) -> str:
-        """
-        Ensure that the examples section is correctly titled "Examples".
-        """
         return self.INCORRECT_EXAMPLES_PATTERN.sub("Examples", content)
     
     def _fix_examples_format_for_sphinx(self, content: str) -> str:
-        """
-        Ensure there's a blank line above and below examples.
-        Also ensures there's only one blank line between the example input and output.
-        """
         def repl(match):
             example = match.group(1).strip()
             example = re.sub(r'\n+', '\n', example)  # Remove multiple newlines
@@ -29,9 +22,6 @@ class DocstringFormatter(BaseFormatter):
         return self.EXAMPLES_BLANK_SPACE_PATTERN.sub(repl, content)
 
     def _remove_backticks_from_examples(self, content: str) -> str:
-        """
-        Remove backticks around examples.
-        """
         def repl(match):
             return match.group(1) + match.group(2).replace('```', '').strip()
 
@@ -39,7 +29,6 @@ class DocstringFormatter(BaseFormatter):
         return self.BACKTICKS_PATTERN.sub(repl, content)
 
     def _format_file(self, filename: str) -> bool:
-        """Format the given file and return True if it was changed."""
         with open(filename, 'r', encoding='utf-8') as f:
             original_content = f.read()
 
