@@ -6,7 +6,7 @@ import argparse
 from .formatters import FunctionOrderingFormatter, DocstringFormatter
 
 FORMATTERS = (DocstringFormatter, 
-            #   FunctionOrderingFormatter,
+              FunctionOrderingFormatter,
               )
 
 
