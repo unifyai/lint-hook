@@ -4,6 +4,8 @@ import networkx as nx
 from typing import Tuple, List
 import sys
 
+import black
+
 from ivy_lint.formatters import BaseFormatter
 
 HEADER_PATTERN = re.compile(
@@ -299,6 +301,8 @@ class FunctionOrderingFormatter(BaseFormatter):
         reordered_code = "\n".join(reordered_code_list).strip()
         if not reordered_code.endswith("\n"):
             reordered_code += "\n"
+
+        reordered_code = black.format_str(reordered_code, mode=black.Mode())
 
         return reordered_code
 
