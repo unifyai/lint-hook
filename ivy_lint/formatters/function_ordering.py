@@ -570,4 +570,3 @@ class FunctionOrderingFormatter(BaseFormatter):
                 " code."
             )
             return False
-        
