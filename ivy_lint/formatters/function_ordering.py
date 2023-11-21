@@ -18,7 +18,23 @@ FILE_PATTERN = re.compile(
 )
 
 
-def class_build_dependency_graph(nodes_with_comments):
+def class_build_dependency_graph(nodes_with_comments: List[Tuple[str, ast.AST]]) -> nx.DiGraph:
+    """
+    Build a class dependency graph based on class inheritance relationships.
+
+    This function constructs a directed graph to represent class dependencies
+    in the code. It identifies classes and their inheritance relationships and
+    ensures that the inheritance hierarchy is respected.
+
+    Parameters
+    ----------
+    nodes_with_comments 
+        A list of code nodes extracted from the source code.
+
+    Returns
+    -------
+    A directed graph representing class dependencies.
+    """
     graph = nx.DiGraph()
     for _, node in nodes_with_comments:
         if isinstance(node, ast.ClassDef):
@@ -32,10 +48,40 @@ def class_build_dependency_graph(nodes_with_comments):
 
 
 def contains_any_name(code: str, names: List[str]) -> bool:
+    """
+    Check if the given code contains any of the specified names.
+
+    Parameters
+    ----------
+    code 
+        The code string to search for names in.
+    names 
+        A list of names to search for within the code.
+
+    Returns
+    -------
+    True if any of the names are found in the code; otherwise, False.
+    """
     return any(name in code for name in names)
 
 
 def extract_names_from_assignment(node: ast.Assign) -> List[str]:
+    """
+    Extract variable names from an assignment node in an Abstract Syntax Tree (AST).
+
+    This function takes an AST assignment node as input and recursively extracts
+    variable names (identifiers) assigned within it. The function returns a list
+    of the extracted variable names.
+
+    Parameters
+    ----------
+    node 
+        The assignment node from the AST.
+
+    Returns
+    -------
+    A list of variable names extracted from the assignment node.
+    """
     names = []
 
     def extract_names(node):
@@ -56,7 +102,23 @@ def extract_names_from_assignment(node: ast.Assign) -> List[str]:
     return names
 
 
-def assignment_build_dependency_graph(nodes_with_comments):
+def assignment_build_dependency_graph(nodes_with_comments: List[Tuple[str, ast.AST]]) -> nx.DiGraph:
+    """
+    Build a directed graph to represent dependencies between variables in assignment statements.
+
+    This function processes a list of nodes with comments and analyzes assignment statements to create a directed graph.
+    The graph represents dependencies between variables, where an edge from variable A to variable B means
+    that variable A is assigned a value that depends on variable B.
+
+    Parameters
+    ----------
+    nodes_with_comments 
+        A list of tuples containing source code and corresponding AST nodes.
+
+    Returns
+    -------
+    A directed graph (NetworkX DiGraph) that captures variable dependencies.
+    """
     graph = nx.DiGraph()
 
     for code, node in nodes_with_comments:
@@ -78,13 +140,46 @@ def assignment_build_dependency_graph(nodes_with_comments):
 
 
 def has_st_composite_decorator(node: ast.FunctionDef) -> bool:
+    """
+    Check if a given function definition has a 'composite' decorator.
+
+    This function examines the decorator list of a function definition node to determine if it contains a decorator
+    with the name 'composite'.
+
+    Parameters
+    ----------
+    node 
+        An Abstract Syntax Tree (AST) node representing a function definition.
+
+    Returns
+    -------
+    True if the 'composite' decorator is found in the decorator list; otherwise, False.
+    """
     return any(
         isinstance(decorator, ast.Attribute) and decorator.attr == "composite"
         for decorator in node.decorator_list
     )
 
 
-def related_helper_function(assignment_name, nodes_with_comments):
+def related_helper_function(assignment_name: str, nodes_with_comments: List[Tuple[str, ast.AST]]) -> str:
+    """
+    Find a related helper function or class based on the provided assignment_name.
+
+    This function iterates through a list of nodes with comments (as returned by
+    `_extract_all_nodes_with_comments` function) to find a related helper function or class
+    based on the provided `assignment_name`.
+
+    Parameters
+    ----------
+    assignment_name 
+        The name of the assignment that you want to find a related helper function for.
+    nodes_with_comments 
+        A list of tuples, where each tuple contains a string of code and the corresponding AST node with comments.
+
+    Returns
+    -------
+    The name of the related helper function or class if found, or None if none is found.
+    """
     for _, node in nodes_with_comments:
         if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and hasattr(node, "name"):
             if node.name.startswith("_") and contains_any_name(
@@ -94,7 +189,21 @@ def related_helper_function(assignment_name, nodes_with_comments):
     return None
 
 
-def _is_assignment_target_an_attribute(node):
+def _is_assignment_target_an_attribute(node: ast.Assign) -> bool:
+    """
+    This function determines whether the assignment target in an assignment statement
+    is an attribute of an object. It is used to distinguish between simple variable
+    assignments and assignments to object attributes.
+
+    Parameters
+    ----------
+    node 
+        The assignment node being analyzed.
+
+    Returns
+    -------
+    True if the assignment target is an attribute, False otherwise.
+    """
     if isinstance(node, ast.Assign):
         for target in node.targets:
             if isinstance(target, ast.Attribute):
@@ -104,11 +213,46 @@ def _is_assignment_target_an_attribute(node):
 
 class FunctionOrderingFormatter(BaseFormatter):
     def _remove_existing_headers(self, source_code: str) -> str:
+        """
+        Removes any existing header patterns from the provided source code.
+
+        Parameters
+        ----------
+        source_code 
+            The original source code containing headers.
+
+        Returns
+        -------
+        The source code with existing headers removed.
+        """
         return HEADER_PATTERN.sub("", source_code)
 
     def _extract_node_with_leading_comments(
         self, node: ast.AST, source_code: str
     ) -> Tuple[str, ast.AST]:
+        """
+        Extracts the portion of the source code containing the leading comments of the provided node.
+        It preserves the structure and leading comments for the specified node.
+
+        Parameters
+        ----------
+        node 
+            The node for which the leading comments need to be extracted.
+        source_code 
+            The complete source code containing the specified node and comments.
+
+        Returns
+        -------
+        A tuple containing the extracted source code with leading comments
+        and the corresponding node.
+
+        Notes
+        -----
+        This function scans the source code to find the region of code that immediately precedes
+        the provided node and captures the comments associated with it. It identifies the start and
+        end lines of the comments and the node, then collects the lines with comments, if present,
+        providing the extracted content for further processing.
+        """
         if hasattr(node, "decorator_list"):
             start_line = (
                 node.decorator_list[0].lineno if node.decorator_list else node.lineno
@@ -135,12 +279,44 @@ class FunctionOrderingFormatter(BaseFormatter):
     def _extract_all_nodes_with_comments(
         self, tree: ast.AST, source_code: str
     ) -> List[Tuple[str, ast.AST]]:
+        """
+        Extracts all nodes with their leading comments from the provided AST tree.
+
+        This function calls `_extract_node_with_leading_comments` for each node in the tree.
+
+        Parameters
+        ----------
+        tree 
+            The Abstract Syntax Tree (AST) representing the parsed source code.
+        source_code 
+            The complete source code containing the nodes and their comments.
+
+        Returns
+        -------
+        A list of tuples containing extracted source code with leading comments
+        and their corresponding AST nodes.
+        """
         return [
             self._extract_node_with_leading_comments(node, source_code)
             for node in tree.body
         ]
 
     def _rearrange_functions_and_classes(self, source_code: str) -> str:
+        """
+        Rearranges functions and classes in the provided source code following a specific order.
+
+        This method utilizes multiple helper functions and custom sorting criteria to reorder the code
+        based on class inheritance and dependencies.
+
+        Parameters
+        ----------
+        source_code 
+            The source code to be reordered.
+
+        Returns
+        -------
+        The reordered source code.
+        """
         source_code = self._remove_existing_headers(source_code)
 
         tree = ast.parse(source_code)
@@ -166,13 +342,37 @@ class FunctionOrderingFormatter(BaseFormatter):
         }
         all_assignments - dependent_assignments
 
-        def _is_assignment_dependent_on_assignment(node):
+        def _is_assignment_dependent_on_assignment(node: ast.Assign) -> bool:
+            """
+            Checks if an assignment node is dependent on other assignments within the same scope.
+
+            Parameters
+            ----------
+            node 
+                The assignment node to be checked.
+
+            Returns
+            -------
+            True if the assignment depends on other assignments; otherwise, False.
+            """
             if isinstance(node, ast.Assign):
                 right_side_names = extract_names_from_assignment(node)
                 return any(name in right_side_names for name in all_assignments)
             return False
 
-        def _is_assignment_dependent_on_function_or_class(node):
+        def _is_assignment_dependent_on_function_or_class(node: ast.Assign) -> bool:
+            """
+            Checks if an assignment node is dependent on functions or classes within the same scope.
+
+            Parameters
+            ----------
+            node 
+                The assignment node to be checked.
+
+            Returns
+            -------
+            True if the assignment depends on functions or classes; otherwise, False.
+            """
             if isinstance(node, ast.Assign):
                 right_side_names = extract_names_from_assignment(node)
                 function_and_class_names = [
@@ -185,7 +385,37 @@ class FunctionOrderingFormatter(BaseFormatter):
                 )
             return False
 
-        def sort_key(item):
+        def sort_key(item: Tuple[str, ast.AST]) -> Tuple[float, int, str]:
+            """
+            Custom sorting key function for nodes.
+
+            This function defines the sorting criteria for the nodes in the code. Nodes are sorted
+            based on their characteristics to ensure a structured and organized code layout.
+
+            Parameters
+            ----------
+            item 
+                The item containing source code and the associated AST node.
+
+            Returns
+            -------
+            A tuple containing sorting criteria to determine the order of the nodes.
+            - If the node represents an import statement, it receives the highest priority (0).
+            - For try-except blocks containing imports, they are considered next (0, 1).
+            - Assignments are sorted based on their dependencies and target names. The priority is
+            determined as follows:
+                - If the assignment is related to a helper function or class, it is given priority (6).
+                - If the assignment involves attributes, it has slightly lower priority (5.5).
+                - Assignments dependent on other assignments are ranked accordingly (7).
+                - Assignments dependent on functions or classes are ranked below (6).
+                - Other assignments follow with a priority of (1).
+            - Class definitions are sorted based on the order of inheritance. Classes are prioritized based
+            on their inheritance hierarchy.
+            - Function definitions are categorized into "helper" and "api" functions. Helper functions or
+            those with a "composite" decorator receive a higher priority (4), while main API functions
+            receive slightly lower priority (5).
+            - If a node does not match any of the above categories, it is sorted with the lowest priority (8).
+            """
             node = item[1]
 
             if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -307,6 +537,18 @@ class FunctionOrderingFormatter(BaseFormatter):
         return reordered_code
 
     def _format_file(self, filename: str) -> bool:
+        """
+        Formats the content of a Python file by reordering functions and classes.
+
+        Parameters
+        ----------
+        filename 
+            The path to the Python file to be formatted.
+
+        Returns
+        -------
+        True if formatting is successful, False otherwise.
+        """
         if FILE_PATTERN.match(filename) is None:
             return False
 
