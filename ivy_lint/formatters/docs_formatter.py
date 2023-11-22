@@ -50,8 +50,8 @@ class DocstringFormatter(BaseDocstringFormatter):
                 if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef, ast.AsyncFor)):
                     original_docstring = ast.get_docstring(node, clean=False)
                     if original_docstring:
-                        modified_docstring = self._do_format_docstring(original_docstring)
-                        formatted_docstring = self.format_docstring(modified_docstring)
+                        modified_docstring = self.format_docstring(original_docstring)
+                        formatted_docstring = self._do_format_docstring(modified_docstring)
                         if original_docstring != formatted_docstring:  # Only add if there are changes
                             replacements[original_docstring] = formatted_docstring
         
