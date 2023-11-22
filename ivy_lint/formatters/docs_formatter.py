@@ -51,7 +51,7 @@ class DocstringFormatter(BaseDocstringFormatter):
                     original_docstring = ast.get_docstring(node, clean=False)
                     if original_docstring:
                         modified_docstring = self._do_format_docstring(original_docstring)
-                        formatted_docstring = format_docstring(modified_docstring)
+                        formatted_docstring = self.format_docstring(modified_docstring)
                         if original_docstring != formatted_docstring:  # Only add if there are changes
                             replacements[original_docstring] = formatted_docstring
         
@@ -64,7 +64,7 @@ class DocstringFormatter(BaseDocstringFormatter):
         with open(filename, 'r') as file:
             original_content = file.read()
 
-        formatted_content = format_all_docstrings(original_content)
+        formatted_content = self.format_all_docstrings(original_content)
 
         if original_content != formatted_content:
             with open(filename, 'w') as file:
