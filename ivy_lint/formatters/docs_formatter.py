@@ -4,7 +4,7 @@ import ast
 from ivy_lint.formatters import BaseFormatter, BaseDocstringFormatter
 
 class DocstringFormatter(BaseDocstringFormatter):
-    def format_docstring(doc):
+    def format_docstring(self, doc):
         """Formats a single docstring."""
         # Rename "Functional Examples" to "Examples" and format it without the extra newline
         doc = re.sub(r'(\s*)Functional Examples\n\1-*\n?', r'\1Examples\n\1--------\n', doc)
@@ -40,7 +40,7 @@ class DocstringFormatter(BaseDocstringFormatter):
                 
         return '\n'.join(formatted_lines)
 
-    def format_all_docstrings(python_code):
+    def format_all_docstrings(self, python_code):
             """Extracts all docstrings from the given Python code, formats them, and replaces the original ones with the formatted versions."""
             tree = ast.parse(python_code)
             replacements = {}
