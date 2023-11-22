@@ -7,11 +7,11 @@ from ivy_lint.formatters import BaseFormatter
 def format_docstring(doc):
     """Formats a single docstring."""
     # Rename "Functional Examples" to "Examples" and format it without the extra newline
-    doc = re.sub(r'(\s*)Functional Examples\n\1-*\n?', r'\1Examples\n\1--------\n', doc)
+    doc = re.sub(r'(\s*)Functional Examples\n\1-*\n?', r'\1Examples\n\1--------', doc)
 
     # Ensure newline and correct indentation after "Examples" when it's already there
     #doc = re.sub(r'(\s*)Examples\n\1--------\s*\n+([^\n])', r'\1Examples\n\1--------\n\2', doc)
-    doc = re.sub(r'(\s*)Examples\n\1--------\s*([^\n])', r'\1Examples\n\1--------\n\1\2', doc)
+    #doc = re.sub(r'(\s*)Examples\n\1--------\s*([^\n])', r'\1Examples\n\1--------\n\1\2', doc)
     
     # Identify code blocks
     lines = doc.split('\n')
