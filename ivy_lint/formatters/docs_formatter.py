@@ -34,6 +34,7 @@ def format_docstring(doc):
         if idx in codeblock_start_lines and formatted_lines and formatted_lines[-1].strip():  # Insert blank line before code block
             if skip:
                 skip = False
+                formatted_lines.append(line)
                 continue
             formatted_lines.append('')
         formatted_lines.append(line)
