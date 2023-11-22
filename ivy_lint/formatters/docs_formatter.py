@@ -10,7 +10,7 @@ def format_docstring(doc):
     doc = re.sub(r'(\s*)Functional Examples\n\1-*\n?', r'\1Examples\n\1--------\n', doc)
 
     # Ensure newline and correct indentation after "Examples" when it's already there
-    doc = re.sub(r'(\s*)Examples\n\1--------\s*([^\n])', r'\1Examples\n\1--------\n\1\2', doc)
+    #doc = re.sub(r'(\s*)Examples\n\1--------\s*([^\n])', r'\1Examples\n\1--------\n\1\2', doc)
 
     # Identify code blocks
     lines = doc.split('\n')
