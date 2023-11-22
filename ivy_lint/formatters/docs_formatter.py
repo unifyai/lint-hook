@@ -3,7 +3,7 @@ import ast
 
 from ivy_lint.formatters import BaseFormatter, BaseDocstringFormatter
 
-class DocstringFormatter(BaseFormatter, BaseDocstringFormatter):
+class DocstringFormatter(BaseDocstringFormatter):
     def format_docstring(doc):
         """Formats a single docstring."""
         # Rename "Functional Examples" to "Examples" and format it without the extra newline
