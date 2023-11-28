@@ -42,7 +42,6 @@ class DocstringFormatter(BaseDocstringFormatter):
                     continue
                 formatted_lines.append('')
             if idx in lines_to_modify:
-                formatted_lines.append(line)
                 formatted_lines[-1] += ' ...' + line.lstrip()
                 continue
             formatted_lines.append(line)
