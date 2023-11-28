@@ -44,19 +44,25 @@ class DocstringFormatter(BaseDocstringFormatter):
 
     def format_all_docstrings(self, python_code):
         """Extracts all docstrings from the given Python code, formats them, and replaces the original ones with the formatted versions."""
-        formatted_lines = []
-
+        #formatted_lines = []
+        replacements = {}
         # Tokenize the code
         tokens = tokenize.tokenize(BytesIO(python_code.encode('utf-8')).readline)
         for token in tokens:
             if token.type == tokenize.STRING:
+                original_docstring = token.string
+                modified_docstring = self.format_docstring(original_docstring)
+                formatted_docstring = self._do_format_docstring(modified_docstring)
                 # Docstring found, format it
-                formatted_lines.append(self.format_docstring(token.string))
-            else:
-                formatted_lines.append(token.string)
-    
-        formatted_code = ''.join(formatted_lines)
-        return self._do_format_docstring(formatted_code)
+                #formatted_lines.append(self.format_docstring(token.string))
+                if original_docstring != formatted_docstring:  # Only add if there are changes
+                    replacement[original_docstring] = formatted_docstring
+
+        for original, formatted in replacements.items():
+                python_code = python_code.replace(original, formatted, 1)  # Only replace once to be safe
+            
+        #formatted_code = ''.join(formatted_lines)
+        return python_code
         
     def _format_file(self, filename: str) -> bool:
         with open(filename, 'r') as file:
