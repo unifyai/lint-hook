@@ -41,25 +41,21 @@ class DocstringFormatter(BaseDocstringFormatter):
         return '\n'.join(formatted_lines)
 
     def format_all_docstrings(self, python_code):
-            """Extracts all docstrings from the given Python code, formats them, and replaces the original ones with the formatted versions."""
-            tree = ast.parse(python_code)
-            replacements = {}
+        """Extracts all docstrings from the given Python code, formats them, and replaces the original ones with the formatted versions."""
+        formatted_lines = []
+
+        # Tokenize the code
+        tokens = tokenize.tokenize(BytesIO(python_code.encode('utf-8')).readline)
+        for token in tokens:
+            if token.type == tokenize.STRING:
+                # Docstring found, format it
+                formatted_lines.append(self.format_docstring(token.string))
+            else:
+                formatted_lines.append(token.string)
+    
+        formatted_code = ''.join(formatted_lines)
+        return self._do_format_docstring(formatted_code)
         
-            # Extract all docstrings from the AST tree
-            for node in ast.walk(tree):
-                if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef, ast.AsyncFor)):
-                    original_docstring = ast.get_docstring(node, clean=False)
-                    if original_docstring:
-                        modified_docstring = self.format_docstring(original_docstring)
-                        formatted_docstring = self._do_format_docstring(modified_docstring)
-                        if original_docstring != formatted_docstring:  # Only add if there are changes
-                            replacements[original_docstring] = formatted_docstring
-        
-            # Replace the docstrings safely
-            for original, formatted in replacements.items():
-                python_code = python_code.replace(original, formatted, 1)  # Only replace once to be safe
-            
-            return python_code
     def _format_file(self, filename: str) -> bool:
         with open(filename, 'r') as file:
             original_content = file.read()
