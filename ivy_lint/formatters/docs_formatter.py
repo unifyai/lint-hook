@@ -25,7 +25,7 @@ class DocstringFormatter(BaseDocstringFormatter):
             if not is_codeblock and stripped_line.startswith('>>>'):
                 is_codeblock = True
                 codeblock_start_lines.add(idx)
-            elif is_codeblock and (not stripped_line or not stripped_line.startswith(('>>>', '...'))):
+            elif is_codeblock and (not stripped_line or not stripped_line.startswith(('>>>', '...')) or not stripped_line.startswith('[')):
                 is_codeblock = False
         
         # Add blank lines before code blocks
@@ -44,7 +44,6 @@ class DocstringFormatter(BaseDocstringFormatter):
 
     def format_all_docstrings(self, python_code):
         """Extracts all docstrings from the given Python code, formats them, and replaces the original ones with the formatted versions."""
-        #formatted_lines = []
         replacements = {}
         # Tokenize the code
         tokens = tokenize.tokenize(BytesIO(python_code.encode('utf-8')).readline)
@@ -53,15 +52,12 @@ class DocstringFormatter(BaseDocstringFormatter):
                 original_docstring = token.string
                 modified_docstring = self.format_docstring(original_docstring)
                 formatted_docstring = self._do_format_docstring(modified_docstring)
-                # Docstring found, format it
-                #formatted_lines.append(self.format_docstring(token.string))
                 if original_docstring != formatted_docstring:  # Only add if there are changes
                     replacements[original_docstring] = formatted_docstring
 
         for original, formatted in replacements.items():
                 python_code = python_code.replace(original, formatted, 1)  # Only replace once to be safe
             
-        #formatted_code = ''.join(formatted_lines)
         return python_code
         
     def _format_file(self, filename: str) -> bool:
