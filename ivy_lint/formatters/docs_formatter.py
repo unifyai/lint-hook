@@ -56,7 +56,7 @@ class DocstringFormatter(BaseDocstringFormatter):
                 # Docstring found, format it
                 #formatted_lines.append(self.format_docstring(token.string))
                 if original_docstring != formatted_docstring:  # Only add if there are changes
-                    replacement[original_docstring] = formatted_docstring
+                    replacements[original_docstring] = formatted_docstring
 
         for original, formatted in replacements.items():
                 python_code = python_code.replace(original, formatted, 1)  # Only replace once to be safe
