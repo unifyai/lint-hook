@@ -18,13 +18,16 @@ class DocstringFormatter(BaseDocstringFormatter):
         lines = doc.split('\n')
         is_codeblock = False
         codeblock_start_lines = set()  # This will store indices of lines which start a code block
-    
+        lines_to_modify = set()  # This will store the indices of indented lines not containing "..."
+        
         for idx, line in enumerate(lines):
             stripped_line = line.strip()
     
             if not is_codeblock and stripped_line.startswith('>>>'):
                 is_codeblock = True
                 codeblock_start_lines.add(idx)
+            elif stripped_line.startswith(('>>>', '...', '[', '(')) or stripped_line.endswith((')', ',', '\\', '(', '[', ']')):
+                lines_to_modify.add(idx)
             elif is_codeblock and (not stripped_line or (not stripped_line.startswith(('>>>', '...', '[', '(')) and not stripped_line.endswith((')', ',', '\\', '(', '[', ']')))):
                 is_codeblock = False
         
@@ -38,6 +41,10 @@ class DocstringFormatter(BaseDocstringFormatter):
                     formatted_lines.append(line)
                     continue
                 formatted_lines.append('')
+            if idx in lines_to_modify:
+                formatted_lines.append(line)
+                formatted_lines[-1] += ' ...' + line.lstrip()
+                continue
             formatted_lines.append(line)
                 
         return '\n'.join(formatted_lines)
