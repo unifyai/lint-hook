@@ -25,7 +25,7 @@ class DocstringFormatter(BaseDocstringFormatter):
             if not is_codeblock and stripped_line.startswith('>>>'):
                 is_codeblock = True
                 codeblock_start_lines.add(idx)
-            elif is_codeblock and (not stripped_line or not stripped_line.startswith(('>>>', '...')) or not stripped_line.startswith('[')):
+            elif is_codeblock and (not stripped_line or not stripped_line.startswith(('>>>', '...', '['))):
                 is_codeblock = False
         
         # Add blank lines before code blocks
