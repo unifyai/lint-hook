@@ -1,3 +1,5 @@
+import tokenize
+from io import BytesIO
 import re
 import ast
 
