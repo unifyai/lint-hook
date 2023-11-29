@@ -29,7 +29,8 @@ class DocstringFormatter(BaseDocstringFormatter):
             if stripped_line.startswith('>>>'):
                 if "(" in line:
                     is_codeblock_cont = True
-                if stripped_line.endswith(')'):
+                #if stripped_line.endswith(')'):
+                if ")" in line:
                     is_codeblock_cont = False
             if not is_codeblock and stripped_line.startswith('>>>'):
                 is_codeblock = True
