@@ -35,7 +35,7 @@ class DocstringFormatter(BaseDocstringFormatter):
                 is_codeblock = True
                 codeblock_start_lines.add(idx)
             #elif is_codeblock and (not stripped_line or (not stripped_line.startswith(('>>>', '...', '[', '(')) and not stripped_line.endswith((')', ',', '\\', '(', '[', ']')))):
-            elif is_codeblock and not is_codeblock_cont and (not stripped_line or (not stripped_line.startswith(('>>>', '...'))):
+            elif is_codeblock and not is_codeblock_cont and (not stripped_line or (not stripped_line.startswith(('>>>', '...')))):
                 is_codeblock = False
             #if is_codeblock and (not stripped_line.startswith(('>>>', '...')) and (stripped_line.startswith(('[', '(')) or stripped_line.endswith((')', ',', '\\', '(', '[', ']')))):
              #   lines_to_modify.add(idx)
