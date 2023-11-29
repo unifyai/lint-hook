@@ -45,7 +45,7 @@ class DocstringFormatter(BaseDocstringFormatter):
             if idx in lines_to_modify:
                 formatted_lines.append(line)
                 indentation = len(formatted_lines[-2]) - len(formatted_lines[-2].lstrip())
-                formatted_lines[-1] = (indentation * ' ') + '...' + line[indentation+3:]
+                formatted_lines[-1] = (indentation * ' ') + '...' + line[indentation:]
                 continue
             formatted_lines.append(line)
                 
