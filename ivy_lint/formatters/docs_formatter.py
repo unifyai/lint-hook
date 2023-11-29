@@ -19,17 +19,26 @@ class DocstringFormatter(BaseDocstringFormatter):
         is_codeblock = False
         codeblock_start_lines = set()  # This will store indices of lines which start a code block
         lines_to_modify = set()  # This will store the indices of indented lines not containing "..."
+        is_codeblock_cont = False
         
         for idx, line in enumerate(lines):
             stripped_line = line.strip()
-    
+
+            if is_codeblock_cont:
+                lines_to_modify.add(idx)
+            if stripped_line.startswith('>>>'):
+                if "(" in line:
+                    is_codeblock_cont = True
+                if stripped_line.endswith(')'):
+                    is_codeblock_cont = False
             if not is_codeblock and stripped_line.startswith('>>>'):
                 is_codeblock = True
                 codeblock_start_lines.add(idx)
-            elif is_codeblock and (not stripped_line or (not stripped_line.startswith(('>>>', '...', '[', '(')) and not stripped_line.endswith((')', ',', '\\', '(', '[', ']')))):
+            #elif is_codeblock and (not stripped_line or (not stripped_line.startswith(('>>>', '...', '[', '(')) and not stripped_line.endswith((')', ',', '\\', '(', '[', ']')))):
+            elif is_codeblock and not is_codeblock_cont and (not stripped_line or (not stripped_line.startswith(('>>>', '...'))):
                 is_codeblock = False
-            if is_codeblock and (not stripped_line.startswith(('>>>', '...')) and (stripped_line.startswith(('[', '(')) or stripped_line.endswith((')', ',', '\\', '(', '[', ']')))):
-                lines_to_modify.add(idx)
+            #if is_codeblock and (not stripped_line.startswith(('>>>', '...')) and (stripped_line.startswith(('[', '(')) or stripped_line.endswith((')', ',', '\\', '(', '[', ']')))):
+             #   lines_to_modify.add(idx)
         
         # Add blank lines before code blocks
         formatted_lines = []
