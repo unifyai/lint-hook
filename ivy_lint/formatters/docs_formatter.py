@@ -50,7 +50,7 @@ class DocstringFormatter(BaseDocstringFormatter):
         indentation = 0
         for idx, line in enumerate(lines):
             if idx in codeblock_start_lines and formatted_lines and formatted_lines[-1].strip():  # Insert blank line before code block
-                if formatted_lines[-1].strip().startswith("-"):
+                if not formatted_lines[-1].strip().startswith("-"):
                     skip = False
                 elif skip:
                     skip = False
