@@ -26,10 +26,10 @@ class DocstringFormatter(BaseDocstringFormatter):
             if not is_codeblock and stripped_line.startswith('>>>'):
                 is_codeblock = True
                 codeblock_start_lines.add(idx)
-            elif is_codeblock and not stripped_line.startswith(('>>>', '...')) and (stripped_line.startswith(('[', '(')) or stripped_line.endswith((')', ',', '\\', '(', '[', ']'))):
-                lines_to_modify.add(idx)
             elif is_codeblock and (not stripped_line or (not stripped_line.startswith(('>>>', '...', '[', '(')) and not stripped_line.endswith((')', ',', '\\', '(', '[', ']')))):
                 is_codeblock = False
+            if is_codeblock and not stripped_line.startswith(('>>>', '...')) and (stripped_line.startswith(('[', '(')) or stripped_line.endswith((')', ',', '\\', '(', '[', ']'))):
+                lines_to_modify.add(idx)
         
         # Add blank lines before code blocks
         formatted_lines = []
@@ -43,7 +43,7 @@ class DocstringFormatter(BaseDocstringFormatter):
                 formatted_lines.append('')
             if idx in lines_to_modify:
                 formatted_lines.append(line)
-                formatted_lines[-1] = ((len(line) - len(line.lstrip())) * ' ') + '...' + line.lstrip()
+                formatted_lines[-1] = ((len(formatted_lines[-2]) - len(formatted_linex[-2].lstrip())) * ' ') + '...' + line.lstrip()
                 continue
             formatted_lines.append(line)
                 
