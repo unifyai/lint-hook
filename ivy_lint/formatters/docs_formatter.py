@@ -31,6 +31,8 @@ class DocstringFormatter(BaseDocstringFormatter):
             elif is_codeblock and not is_codeblock_cont and (not stripped_line or (not stripped_line.startswith(('>>>', '...')))):
                 is_codeblock = False
             if is_codeblock:
+                if stripped_line.startswith(('>>>')):
+                    lb = rb = 0
                 lb += line.count('(')
                 rb += line.count(')')
                 if rb >= lb:
