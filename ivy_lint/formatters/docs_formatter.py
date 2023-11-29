@@ -41,7 +41,8 @@ class DocstringFormatter(BaseDocstringFormatter):
                     lb = lb - rb
                     rb = 0
                     is_codeblock_cont = True
-                    if not stripped_line.startswith(('>>>', '...')):
+                
+                if not stripped_line.startswith(('>>>', '...')):
                         lines_to_modify.add(idx) 
         
         # Add blank lines before code blocks
