@@ -41,7 +41,6 @@ class DocstringFormatter(BaseDocstringFormatter):
                     lb = lb - rb
                     rb = 0
                     is_codeblock_cont = True
-                
                 if not stripped_line.startswith(('>>>', '...')):
                         lines_to_modify.add(idx) 
         
@@ -51,7 +50,9 @@ class DocstringFormatter(BaseDocstringFormatter):
         indentation = 0
         for idx, line in enumerate(lines):
             if idx in codeblock_start_lines and formatted_lines and formatted_lines[-1].strip():  # Insert blank line before code block
-                if skip:
+                if formatted_lines[-1].strip().startswith("-"):
+                    skip = False
+                elif skip:
                     skip = False
                     formatted_lines.append(line)
                     continue
