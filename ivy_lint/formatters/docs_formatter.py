@@ -24,7 +24,7 @@ class DocstringFormatter(BaseDocstringFormatter):
         for idx, line in enumerate(lines):
             stripped_line = line.strip()
 
-            if is_codeblock_cont and not stripped_line.startswith(('>>>', '...')):
+            if is_codeblock and is_codeblock_cont and not stripped_line.startswith(('>>>', '...')):
                 lines_to_modify.add(idx)
             if stripped_line.startswith('>>>'):
                 if "(" in line:
