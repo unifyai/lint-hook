@@ -29,7 +29,7 @@ class DocstringFormatter(BaseDocstringFormatter):
         is_codeblock = False
         codeblock_start_lines = set()  # This will store indices of lines which start a code block
         lines_to_modify = set()  # This will store the indices of indented lines not containing "..."
-        incorrect_sections = set()
+        incorrect_sections = set() # This will store the indices of all the incorrect sections
         prev_line = ""
         is_codeblock_cont = False
         lb = 0
@@ -40,10 +40,6 @@ class DocstringFormatter(BaseDocstringFormatter):
             
             if stripped_line.startswith('-') and stripped_line.endswith('-'):
                 section_title = prev_line
-                '''try:
-                    self.validate_section_name(section_title, VALID_SECTION_NAMES)
-                except ValueError as e:
-                    incorrect_sections.add(idx)'''
                 if not self.validate_section_name(section_title, VALID_SECTION_NAMES):
                     incorrect_sections.add(idx)
                     
@@ -88,8 +84,8 @@ class DocstringFormatter(BaseDocstringFormatter):
                 indentation = len(formatted_lines[-2]) - len(formatted_lines[-2].lstrip())
                 formatted_lines[-1] = (indentation * ' ') + '...' + line[indentation:]
                 continue
-            if idx in incorrect_sections:
-                formatted_lines[-1] = "INCORRECT"
+            if idx in incorrect_sections:    #for future purposes
+                pass    
             formatted_lines.append(line)
                 
         return '\n'.join(formatted_lines)
