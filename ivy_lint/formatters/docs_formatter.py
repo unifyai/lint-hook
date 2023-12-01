@@ -27,6 +27,7 @@ class DocstringFormatter(BaseDocstringFormatter):
         is_codeblock = False
         codeblock_start_lines = set()  # This will store indices of lines which start a code block
         lines_to_modify = set()  # This will store the indices of indented lines not containing "..."
+        prev_line = ""
         is_codeblock_cont = False
         lb = 0
         rb = 0
@@ -35,7 +36,7 @@ class DocstringFormatter(BaseDocstringFormatter):
             stripped_line = line.strip()
             if stripped_line.startswith('-') and stripped_line.endswith('-'):
                 section_title = prev_line
-                validate_section_name(section_title, VALID_SECTION_NAMES) 
+                self.validate_section_name(section_title, VALID_SECTION_NAMES) 
             if not is_codeblock and stripped_line.startswith('>>>'):
                 is_codeblock = True
                 codeblock_start_lines.add(idx)
@@ -56,7 +57,7 @@ class DocstringFormatter(BaseDocstringFormatter):
                     is_codeblock_cont = True
                 if not stripped_line.startswith(('>>>', '...')):
                         lines_to_modify.add(idx) 
-                prev_line = stripped_line
+            prev_line = stripped_line
         
         # Add blank lines before code blocks
         formatted_lines = []
