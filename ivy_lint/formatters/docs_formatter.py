@@ -8,7 +8,9 @@ from ivy_lint.formatters import BaseFormatter, BaseDocstringFormatter
 class DocstringFormatter(BaseDocstringFormatter):
     def validate_section_name(self, section_name, VALID_SECTION_NAMES):
         if section_name not in VALID_SECTION_NAMES:
-            raise ValueError(f"Invalid section name: {section_name}. Valid section names are {VALID_SECTION_NAMES}")
+            print(f"Invalid section name: {section_name}. Valid section names are {VALID_SECTION_NAMES}")
+            return False
+        return True
         
     def format_docstring(self, doc):
         """Formats a single docstring."""
@@ -38,9 +40,11 @@ class DocstringFormatter(BaseDocstringFormatter):
             
             if stripped_line.startswith('-') and stripped_line.endswith('-'):
                 section_title = prev_line
-                try:
+                '''try:
                     self.validate_section_name(section_title, VALID_SECTION_NAMES)
                 except ValueError as e:
+                    incorrect_sections.add(idx)'''
+                if not self.validate_section_name(section_title, VALID_SECTION_NAMES):
                     incorrect_sections.add(idx)
                     
             if not is_codeblock and stripped_line.startswith('>>>'):
