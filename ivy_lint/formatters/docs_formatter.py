@@ -6,6 +6,10 @@ import ast
 from ivy_lint.formatters import BaseFormatter, BaseDocstringFormatter
 
 class DocstringFormatter(BaseDocstringFormatter):
+    def validate_section_name(self, section_name, VALID_SECTION_NAMES):
+        if section_name not in VALID_SECTION_NAMES:
+            raise ValueError(f"Invalid section name: {section_name}. Valid section names are {VALID_SECTION_NAMES}")
+        
     def format_docstring(self, doc):
         """Formats a single docstring."""
         # Rename "Functional Examples" to "Examples" and format it without the extra newline
@@ -13,6 +17,10 @@ class DocstringFormatter(BaseDocstringFormatter):
     
         # Ensure newline and correct indentation after "Examples" when it's already there
         doc = re.sub(r'(\s*)Examples\n\1--------\s*\n+([^\n])', r'\1Examples\n\1--------\n\2', doc)
+        
+        VALID_SECTION_NAMES = ["Args", "Arguments", "Attention", "Attributes", "Caution", "Danger", "Error", "Example", "Examples", "Hint", "Important", 
+                               "Keyword Args", "Keyword Arguments", "Methods", "Note", "Notes", "Other Parameters", "Parameters", "Return", "Returns", "Raise", 
+                               "Raises", "References", "See Also", "Tip", "Todo", "Warning", "Warnings", "Warn", "Warns", "Yield", "Yields"]
         
         # Identify code blocks
         lines = doc.split('\n')
@@ -25,6 +33,9 @@ class DocstringFormatter(BaseDocstringFormatter):
         
         for idx, line in enumerate(lines):
             stripped_line = line.strip()
+            if stripped_line.startswith('-') and stripped_line.endswith('-'):
+                section_title = prev_line
+                validate_section_name(section_title, VALID_SECTION_NAMES) 
             if not is_codeblock and stripped_line.startswith('>>>'):
                 is_codeblock = True
                 codeblock_start_lines.add(idx)
@@ -45,6 +56,7 @@ class DocstringFormatter(BaseDocstringFormatter):
                     is_codeblock_cont = True
                 if not stripped_line.startswith(('>>>', '...')):
                         lines_to_modify.add(idx) 
+                prev_line = stripped_line
         
         # Add blank lines before code blocks
         formatted_lines = []
