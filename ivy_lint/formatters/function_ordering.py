@@ -442,7 +442,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                         and hasattr(n, "name")
                         and n.name == related_function
                     ][0]
-                    return (1, function_position, target_str)
+                    return (6, function_position, target_str)
 
                 if _is_assignment_target_an_attribute(node):
                     return (5.5, 0, target_str)
