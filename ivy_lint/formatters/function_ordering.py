@@ -507,7 +507,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                     current_function_type = "helper"
                     if last_function_type != "helper":
                         reordered_code_list.append(
-                            "\n# --- Helpers --- #\n# --------------- #\n"
+                            "\n\n# --- Helpers --- #\n# --------------- #\n"
                         )
                 else:
                     current_function_type = "api"
