@@ -547,7 +547,8 @@ class FunctionOrderingFormatter(BaseFormatter):
             return self._extended_rearrange_functions_and_classes(original_source_code, reordered_code, sort_key)
         return reordered_code
 
-    def _extended_rearrange_functions_and_classes(self, original_source_code: str, reordered_code: str, sort_key) -> str:
+    def _extended_rearrange_functions_and_classes(self, original_source_code: str, reordered_code: str,
+                                                  sort_key) -> str:
         """
         Extends the _rearrange_functions_and_classes function to cater to both ivy and stateful files.
 
@@ -585,6 +586,7 @@ class FunctionOrderingFormatter(BaseFormatter):
             "# Device Allocation",
             "# Function Splitting",
             "# Profiler",
+            "# Extra"
         ]
 
         tree = ast.parse(original_source_code)
@@ -616,7 +618,7 @@ class FunctionOrderingFormatter(BaseFormatter):
             else:
                 header = header.strip("#")
                 reordered_code_list_main.append(f"#{header}")
-                pattern = re.compile(rf"\s?#{re.escape(header)}\s?#?")
+                pattern = re.compile(rf"#\s?({re.escape(header)}|-+)\s?#")
                 reordered_code_list_main.extend(pattern.sub("", code) for code, _ in section)
 
         tree = ast.parse(reordered_code)
@@ -639,8 +641,7 @@ class FunctionOrderingFormatter(BaseFormatter):
                 if node.name.startswith("_") or has_st_composite_decorator(node):
                     reordered_code_list_before.append(code)
                     continue
-                if code.strip().startswith("# --- Main"):
-                    previous_was_main = True
+                previous_was_main = True
             else:
                 reordered_code_list_before.append(code)
 
