@@ -607,19 +607,10 @@ class FunctionOrderingFormatter(BaseFormatter):
                 current_section.append((code, node))
                 sorted_sections[current_header] = current_section
 
-        for header, section in sorted_sections.items():
-            sorted_section = sorted(section, key=sort_key)
-            sorted_sections[header] = sorted_section
-
         reordered_code_list_main = []
         for header, section in sorted_sections.items():
-            if header == "":
-                reordered_code_list_main.extend(code for code, _ in section)
-            else:
-                header = header.strip("#")
-                reordered_code_list_main.append(f"#{header}")
-                pattern = re.compile(rf"#\s?({re.escape(header)}|-+)\s?#")
-                reordered_code_list_main.extend(pattern.sub("", code) for code, _ in section)
+            sorted_section = sorted(section, key=sort_key)
+            reordered_code_list_main.extend(code for code, _ in sorted_section)
 
         tree = ast.parse(reordered_code)
         nodes_with_comments = self._extract_all_nodes_with_comments(tree, reordered_code)
