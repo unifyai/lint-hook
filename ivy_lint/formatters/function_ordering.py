@@ -19,7 +19,7 @@ FILE_PATTERN = re.compile(
 
 EXTENDED_FILE_PATTERN = re.compile(
     r"(ivy/functional/backends/(?!.*(?:config\.py|__init__\.py)$).*"
-    r"|ivy/functional/stateful/(?!.*(?:config\.py|__init__\.py)$).*"
+    r"|ivy/stateful/(?!.*(?:config\.py|__init__\.py)$).*"
     r"|ivy/functional/ivy/(?!.*(?:config\.py|__init__\.py)$).*)"
 )
 
